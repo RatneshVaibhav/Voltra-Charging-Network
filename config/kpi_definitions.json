@@ -1,7 +1,7 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "approved_on": "2026-09-27",
-  "approved_in": "docs/decisions_log.md (D1-D6)",
+  "approved_in": "docs/decisions_log.md (D1-D8)",
   "change_policy": "Business definitions. Never overridden by environment variables. Any change needs a dated entry in docs/decisions_log.md and a version bump.",
 
   "dc_charger": {
@@ -54,7 +54,8 @@
     "name": "First-Time Charge Success rate (FTCS)",
     "formula": "visits whose first attempt succeeded / all visits",
     "grain": "visit",
-    "baseline_rule": "the three most recent monthly exports present in the data, anchored to the end of the data (not the run date)",
+    "baseline_rule": "the baseline_months most recent monthly exports present in the data, anchored to the end of the data (not the run date)",
+    "baseline_months": 3,
     "target": {"from_baseline": true, "to": 0.87, "horizon_weeks": 6, "stretch_next_quarter": 0.90}
   },
 
@@ -78,6 +79,16 @@
     "month_day_coverage_fail_below": 0.9
   },
 
+  "validation_tolerances": {
+    "note": "Tolerances of the validation gate (D8). Kept here, not in code or env, so a change is versioned and logged.",
+    "malformed_rows_fail_share": 0.001,
+    "unparseable_timestamps_fail_share": 0.001,
+    "missing_energy_rows_fail_above": 0,
+    "why_energy_zero_tolerance": "energy_kwh is the KPI input; a missing value would silently count as a failed attempt",
+    "wall_clock_age_warn_days": 45,
+    "dashboard_reproduction_tolerance_pts": 0.05
+  },
+
   "outage_inference": {
     "scope": "sites with >= 2 DC chargers",
     "rule": "for a charger with share p (>= min_share) of the site's successful sessions, a run of k consecutive successful site sessions on other chargers is an inferred outage when (1-p)^k < probability_threshold",
@@ -85,5 +96,16 @@
     "probability_threshold": 0.001,
     "bounded_by": "charger commissioned life (first to last session)",
     "silent_charger": {"min_inferred_availability": 0.99, "max_first_attempt_success": 0.80}
+  },
+
+  "repair_effect": {
+    "basis": "illustrative - work-order timing is simulated; before/after comparison with no control group",
+    "window_days": 30,
+    "min_first_attempts_each_side": 20
+  },
+
+  "trend": {
+    "commissioned_mid_window_after_days": 14,
+    "why": "a charger whose first session is more than 14 days after the data starts was commissioned during the window (mix effect on trends)"
   }
 }

@@ -15,7 +15,8 @@ def pct(x, nd=1):
     return None if x is None or (isinstance(x, float) and np.isnan(x)) else round(100 * float(x), nd)
 
 
-def baseline_months(visits: pd.DataFrame, n: int = 3) -> list[str]:
+def baseline_months(visits: pd.DataFrame, n: int) -> list[str]:
+    """The n most recent monthly exports present in the data (anchored to the data, not the run date)."""
     return sorted(visits["month"].unique())[-n:]
 
 
@@ -89,9 +90,11 @@ def reliability_definitions(status_events: list, charger_stats: pd.DataFrame) ->
             "down_minutes_by_category": {k: round(v) for k, v in down.items()}}
 
 
-def repair_effect(work_orders: pd.DataFrame, attempts: pd.DataFrame, days: int = 30, min_n: int = 20) -> dict:
-    """Charger first-attempt success in the 30 days before an outage vs 30 days after the work order closed (illustrative:
-    work-order timing is anchored to inferred outages; outcomes are real sessions)."""
+def repair_effect(work_orders: pd.DataFrame, attempts: pd.DataFrame, defs: dict) -> dict:
+    """Charger first-attempt success in the window before a corrective work order opened vs the window after it closed
+    (illustrative: work-order timing is simulated and anchored to inferred outages; outcomes are real sessions)."""
+    rules = defs["repair_effect"]
+    days, min_n = rules["window_days"], rules["min_first_attempts_each_side"]
     first = attempts[attempts["attempt_no"] == 1]
     rows = []
     for wo in work_orders[work_orders["work_type"] == "corrective"].itertuples():
@@ -110,7 +113,7 @@ def repair_effect(work_orders: pd.DataFrame, attempts: pd.DataFrame, days: int =
 
 
 def compute_metrics(attempts, visits, sites, charger_stats, outages, status_events, work_orders, defs, run_date) -> dict:
-    base = baseline_months(visits)
+    base = baseline_months(visits, defs["kpi"]["baseline_months"])
     q = visits[visits["month"].isin(base)]
     qa = attempts[attempts["visit_id"].isin(q["visit_id"])]
     overall = visit_summary(attempts, visits)
@@ -126,10 +129,11 @@ def compute_metrics(attempts, visits, sites, charger_stats, outages, status_even
     card, lag = site_scorecard(visits, sites, base, defs)
     sens = sensitivity_table(attempts, defs)
     rel = reliability_definitions(status_events, charger_stats)
-    rep = repair_effect(work_orders, attempts)
+    rep = repair_effect(work_orders, attempts, defs)
     silent = charger_stats[charger_stats["silent_charger"]]
     corrective = work_orders[work_orders["work_type"] == "corrective"]
-    commissioned_mid = int((charger_stats["first_seen"] > attempts["session_start"].min() + pd.Timedelta(days=14)).sum())
+    grace = pd.Timedelta(days=defs["trend"]["commissioned_mid_window_after_days"])
+    commissioned_mid = int((charger_stats["first_seen"] > attempts["session_start"].min() + grace).sum())
     metrics = {
         "definitions_version": defs["version"],
         "run_date": str(run_date.date()), "reporting_month": reporting_month,

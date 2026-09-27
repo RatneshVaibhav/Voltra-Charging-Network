@@ -61,7 +61,9 @@ def main(seed: int = 42) -> dict:
     dc = classify_dc_chargers(sessions, defs, log)
     _, chargers, _ = resolve_sites(sessions[sessions["charger_id"].isin(dc)], stations, defs, log)
     attempts = build_attempts(sessions, dc, chargers, defs, log)
-    attempts, _ = build_visits(attempts, grouping_key="site_id", min_gap=-2, max_gap=5)
+    v = defs["visit"]
+    attempts, _ = build_visits(attempts, grouping_key=v["grouping_key"], min_gap=v["min_gap_minutes"],
+                               max_gap=v["max_gap_minutes"])
     outages, charger_stats = infer_outages(attempts, defs)
     port_of = (attempts[~attempts["is_unbound"]].groupby("charger_id")["port_id"]
                .agg(lambda s: s.value_counts().index[0]))

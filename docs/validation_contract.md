@@ -4,6 +4,9 @@ Format: **business assumption → data expectation → executable check → seve
 Severities: **FAIL** stops the run (exit 2, nothing published) · **WARN** = known issue handled by an explicit, counted
 rule · **UNKNOWN** = the data cannot answer the question. The latest results for every run are in
 `data/processed/run_date=<d>/validation_report.json` (or `logs/validation_<d>.json` when a gate stops the run).
+Every gate logs its counts on pass (`VALIDATE | content gate PASSED | PASS=4 WARN=11`) and one line per WARN/UNKNOWN,
+so the console shows what was accepted and why. Gate tolerances live in `config/kpi_definitions.json` →
+`validation_tolerances` (D8), never in code or environment variables.
 
 ## Technical checks
 
@@ -14,9 +17,11 @@ rule · **UNKNOWN** = the data cannot answer the question. The latest results fo
 | We received the whole status feed | received == `total_records` for every month | `retrieval.S1 status feed` | FAIL | Stop | PASS 124,968 |
 | We read the whole work-order table | rows == generation manifest | `retrieval.S2 work orders` | FAIL | Stop | PASS 426 |
 | The export schema is what the pipeline expects | 9 required columns present | `sessions.required_columns` | FAIL | Stop — never skip a missing column silently | PASS |
+| Every monthly file has the same layout | every header row identical to the first file's | `sessions.header_consistency` | FAIL | Stop — a reordered or renamed column is never re-mapped by guesswork; confirm the new layout with the CPMS vendor | PASS 52/52 identical |
 | Files are well-formed | headers not glued onto data rows | `sessions.glued_headers` | WARN | Repair (newline), count, log | WARN 39 repaired |
 | Rows have the right number of fields | 0 malformed | `sessions.malformed_rows` | FAIL > 0.1%, WARN > 0 | Stop / count | PASS 0 |
 | Timestamps are usable | parseable UTC | `sessions.timestamps_parse` | FAIL > 0.1% | Stop | PASS 0 |
+| Numbers are usable | `energy_kwh` always parses; peak power may be blank | `sessions.numeric_parse` | FAIL if any `energy_kwh` is missing (it would silently count as a failed attempt) · WARN for blank peak power | Stop / count; peak power left missing, never imputed — it is only used for DC classification (max per port) and the physics check | WARN 2,549 blank `peak_power_kw` (1,952 on port-less rows); 0 missing energy |
 | One row = one session | no session_id with conflicting values | `sessions.session_id_unique` | FAIL | Stop — cannot choose silently | PASS |
 | Exports are not duplicated | exact duplicate rows collapse | `sessions.exact_duplicates` | WARN | Keep one, count, log | none (demo: `--chaos duplicate_rows`) |
 | Session physics make sense | energy > 0 implies peak power > 0 | `sessions.energy_without_power` | WARN | Flag; **not** reclassified (energy is the KPI input) | WARN 1,766 |
@@ -44,9 +49,9 @@ rule · **UNKNOWN** = the data cannot answer the question. The latest results fo
 | Assumption | Check | Severity | Latest result |
 |---|---|---|---|
 | Nothing is lost between sessions and attempts | `model.attempt_row_conservation` (DC rows == attempts) | FAIL | PASS 35,996 = 35,996 |
-| Every attempt belongs to exactly one visit | `model.visit_integrity` | FAIL | PASS 29,036 visits |
+| Every attempt belongs to exactly one visit | `model.visit_integrity` — every attempt has a visit id, visit ids unique, attempt counts add up, outcomes from the defined set | FAIL | PASS 29,036 visits / 35,996 attempts |
 | Simulated data is labelled | `S1.labelled_simulated`, `S2.labelled_simulated` | FAIL | PASS |
-| Simulated data never reaches the KPI | `model.no_simulated_fields_in_kpi_inputs` | FAIL | PASS |
+| Simulated data never reaches the KPI | `model.no_simulated_fields_in_kpi_inputs` — checked by content: KPI inputs are R1 columns plus an allowlist of derived columns, and every attempt is an R1 `session_id` | FAIL | PASS |
 | Someone owns the KPI definition | `organisational.kpi_owner` | UNKNOWN | UNKNOWN — four stakeholders disagree; sign-off needed |
 
 ## Assumptions recorded instead of silently fixed

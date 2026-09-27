@@ -88,9 +88,9 @@ def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
         evidence = [ev_r1, ev_r2, ev_s1, ev_s2]
         # ---------------- VALIDATE 1: retrieval + raw schema + simulation labels
         results += validate.check_retrieval(evidence)
-        results += validate.check_raw_sessions(sessions_raw, parse_stats)
+        results += validate.check_raw_sessions(sessions_raw, parse_stats, defs)
         results += validate.check_simulated_sources(status_events, work_orders)
-        validate.gate(results, "retrieval/schema gate")
+        validate.gate(results, "retrieval/schema gate", logger)
         # ---------------- CLEAN
         if chaos == "duplicate_rows":
             logger.warning("CHAOS | duplicate_rows: re-appending 50 exact copies of existing rows")
@@ -101,8 +101,9 @@ def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
             sessions[["session_start", "session_end"]] -= pd.Timedelta(days=120)
         # ---------------- VALIDATE 2: content
         today = pd.Timestamp.now(tz="UTC")
+        since = len(results)
         results += validate.check_sessions(sessions, clean_stats, defs, run_date, today)
-        validate.gate(results, "content gate")
+        validate.gate(results, "content gate", logger, since)
         # ---------------- TRANSFORM
         dc = transform.classify_dc_chargers(sessions, defs, logger)
         dc_sessions = sessions[sessions["charger_id"].isin(dc)]
@@ -118,15 +119,17 @@ def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
         # ---------------- VALIDATE 3: model
         brief = json.loads((SIM_DIR / "client_brief.json").read_text())
         snapshot_label = ev_r2.details.get("snapshot_taken_utc", "live")
+        since = len(results)
         results += validate.check_model(attempts, visits, site_diag, len(dc_sessions), snapshot_label,
-                                        sessions["session_start"].max(), brief)
+                                        sessions["session_start"].max(), brief,
+                                        r1_columns=list(sessions.columns), r1_session_ids=set(sessions["session_id"]))
         # ---------------- METRICS
         out = metrics_mod.compute_metrics(attempts, visits, sites, charger_stats, outages, status_events,
                                           work_orders, defs, run_date)
         m = out["metrics"]
         results.append(validate.check_dashboard(m["illustrative_simulated_input"]["reliability_definitions"]["operator_noc_uptime_pct"],
-                                                ev_s1.details["operator_dashboard"]["network_uptime_pct"]))
-        validate.gate(results, "model gate")
+                                                ev_s1.details["operator_dashboard"]["network_uptime_pct"], defs))
+        validate.gate(results, "model gate", logger, since)
         m["validation_summary"] = pd.Series([r.status for r in results]).value_counts().to_dict()
         # ---------------- SAVE
         charger_out = chargers.merge(charger_stats.drop(columns=["site_id"]), on="charger_id", how="left")

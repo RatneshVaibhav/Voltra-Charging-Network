@@ -164,6 +164,34 @@ and teach nothing; judging it against the logical date keeps the check meaningfu
 "… ST.", "110 COLLEGE ST W" vs "… STREET WEST"). Within-site distances are ≤ 33 m; the nearest separate site is 17 km
 away, so any threshold between those gives the same **40 sites** (not 43).
 
+
+## D8 — Validation hardening after independent review (definitions v1.2.0)
+**Date:** 2026-09-27 · **Status:** Locked
+
+**Decision.** Five rules added to the validation gate:
+1. **A changed file layout is a FAIL.** Every header row in every monthly file must equal the first file's header.
+2. **Missing energy is a FAIL; blank peak power is a counted WARN.** Values that do not parse are left missing, never
+   imputed.
+3. **Integrity checks test content, not column names.** Every attempt must be a real R1 `session_id`; KPI inputs may only
+   hold R1 columns plus an allowlist of derived columns; every attempt sits in exactly one visit.
+4. **Gate tolerances are configuration** (`validation_tolerances` in `config/kpi_definitions.json`), not literals in code.
+5. **Gates speak on success.** Each gate logs its PASS/WARN counts and one line per WARN/UNKNOWN.
+
+**Options considered.**
+| Problem | Options | Chosen | Why |
+|---|---|---|---|
+| A later file's header is reordered or renamed | (a) parse with the first header (old behaviour) · (b) map columns by name per file · (c) FAIL | **(c)** | (a) silently swapped energy and peak power in a test, with zero warnings. (b) is safe for a pure reorder but not for a rename, and still hides that the export contract changed. A layout change is a conversation with the CPMS vendor, not a parsing problem. |
+| 2,549 rows have blank `peak_power_kw` | impute (median or 0) · drop the rows · keep missing and count | **keep missing, WARN** | Imputing invents physics (0 kW would also trip the energy-without-power flag). Dropping would delete 1,952 port-less failed attempts — the D2 trap again, inflating FTCS. Peak power is only used as max-per-port for DC classification, where a blank is simply ignored. |
+| `energy_kwh` does not parse | coerce to NaN (old) · treat as 0 · FAIL | **FAIL, zero tolerance** | `NaN >= 1 kWh` is False, so a missing energy value would silently become a failed attempt and lower the KPI. The KPI input gets zero tolerance. |
+
+**Evidence.** Review F1: a reordered header in a later file swapped energy and peak power with no warning. All 52 real
+header rows are identical, so no published number was affected. F2: the run manifest recorded 2,549 unparseable numbers
+that no check read. F15: `visit_integrity` compared `value_counts().sum()` with `len()` — always true. F10: a clean run
+printed no gate lines at all.
+
+**Consequences.** No KPI number changes (86.03% / 83.87%). Validation summary 16/13/1 → 17/14/1. A future export with a
+changed layout or missing energy stops the run with exit 2 and a message naming the file and column.
+
 ---
 
 ## Corrections log (self-corrections made during research — kept visible on purpose)
@@ -180,3 +208,6 @@ away, so any threshold between those gives the same **40 sites** (not 43).
 | C8 | D3 table labelled a site-level 2-min result as port-level | Independent review | Relabelled; port-level 2-min is 82.4% / 11.3% |
 | C9 | Headline "1 in 6" used the 13-month figure while the baseline is the recent quarter | Independent review | Headline "1 in 7" (D1 amendment) |
 | C10 | Each monthly export is missing its last calendar day (UTC) | Day-coverage check while defining "complete month" | WARN check + limitation + re-export request |
+| C11 | Later files' header rows were counted but never compared with the first — a reordered export would be parsed into the wrong columns silently | Independent review F1: a scratch test swapped energy and peak power with zero warnings | FAIL check `sessions.header_consistency` (D8) |
+| C12 | `to_numeric(errors="coerce")` turned 2,549 blank peak-power values into NaN; the count was stored but never checked or documented, and a blank energy value would have become a silent failed attempt | Review F2 (run manifest) | `sessions.numeric_parse`: missing energy FAIL, blank peak power WARN (D8) |
+| C13 | The whitespace strip keyed on `dtype == object`, which pandas 3 no longer uses for text, so it silently did nothing | Review F9 (no padded cells in this data, so no number moved) | Strip keyed on string dtypes; `pandas>=2.0,<4` pinned |

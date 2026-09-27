@@ -68,3 +68,21 @@ def test_gate_logs_its_counts_and_every_warning(defs, caplog):
     with caplog.at_level(logging.INFO, logger="tests"):
         gate(results, "schema", logging.getLogger("tests"))
     assert "schema PASSED" in caplog.text and "WARN sessions.glued_headers n=3" in caplog.text
+
+
+def test_failed_swap_restores_the_previous_partition(tmp_path, log, monkeypatch):
+    from pathlib import Path
+    publish_partition(tmp_path, "2025-02-01", {"a.csv": pd.DataFrame({"x": [1]})}, log)
+    real_rename = Path.rename
+
+    def flaky(self, target):
+        if self.name.startswith(".tmp_"):
+            raise OSError("disk full")
+        return real_rename(self, target)
+    monkeypatch.setattr(Path, "rename", flaky)
+    with pytest.raises(OSError):
+        publish_partition(tmp_path, "2025-02-01", {"a.csv": pd.DataFrame({"x": [2]})}, log)
+    monkeypatch.undo()
+    assert pd.read_csv(tmp_path / "run_date=2025-02-01" / "a.csv")["x"].tolist() == [1]      # old run still published
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["run_date=2025-02-01"]
+    assert (tmp_path / "run_date=2025-02-01").stat().st_mode & 0o777 == 0o755                  # readable by others

@@ -227,6 +227,27 @@ F12, F5 (chargers 13664401 and 13164881: last success 5–6 Jan 2025; 74 / 77 si
 **Consequences.** No KPI number changes. The crew decision gains one verification item (S29). Validation summary
 17/14/1 → 17/15/1 (33 checks). The judgement call now has its own block in `metrics.json` that the demo can show.
 
+
+## D10 — Failure demos are isolated and realistic
+**Date:** 2026-09-27 · **Status:** Locked
+
+**Decision.** Every `--chaos` run writes only under `data/raw/chaos/<name>/`, `data/processed/chaos/<name>/` and
+`logs/*_chaos-<name>.*`. The `stale_data` demo withholds the latest monthly export instead of shifting timestamps.
+
+**Options considered.**
+| Question | Options | Chosen | Why |
+|---|---|---|---|
+| Where a demo run writes | same paths as the real run (old) · a fake run date · **a separate `chaos/<name>/` tree** | **separate tree** | The old behaviour let `duplicate_rows` republish over the real partition, and a failed demo overwrote the real run's raw inputs and log — raw and processed no longer matched. A fake run date would change the reporting month and the freshness verdict. |
+| How to simulate stale data | shift every timestamp 120 days (old) · **withhold the latest export** | **withhold** | Shifting created a partial first month, so the demo failed on day coverage *and* freshness, which muddied the message. A late January export is the real-world failure: the latest session is 30 Dec, lag 32 days, and only freshness fails. |
+
+**Evidence.** Review F6 (metrics.json hash changed after the duplicate-rows demo; a stale failure report outlived later
+successful runs) and F18.
+
+**Consequences.** After all five demos the real partition and raw inputs are byte-identical to the clean run. Also fixed
+in the same change: a failed partition swap now restores the previous partition (F7), published folders are readable
+(F19), API keys are redacted from logs and errors (F8), and a server's `Retry-After` is parsed defensively and capped
+(F17).
+
 ---
 
 ## Corrections log (self-corrections made during research — kept visible on purpose)

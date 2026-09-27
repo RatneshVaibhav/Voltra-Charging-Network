@@ -15,14 +15,18 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import pandas as pd
 import requests
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+SECRET_QUERY_PARAM = re.compile(r"(api_key=)[^&\s'\"]+", re.IGNORECASE)
 
 
 class RetrievalError(RuntimeError):
@@ -45,38 +49,59 @@ def git_blob_sha1(data: bytes) -> str:
     return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
 
 
+def redact(text) -> str:
+    """Remove API keys from anything that can reach a log or the console (requests puts the full URL in its errors)."""
+    return SECRET_QUERY_PARAM.sub(r"\1***", str(text))
+
+
+def server_requested_wait(response: requests.Response, default: float, cap: float) -> float:
+    """Wait asked for by the server: body `retry_after_seconds`, else the `Retry-After` header (seconds or an HTTP
+    date). Unparseable values fall back to the backoff; the result is capped so a server cannot stall the run."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    value = body.get("retry_after_seconds") if isinstance(body, dict) else None
+    if value is None:
+        value = response.headers.get("Retry-After")
+    if value is None:
+        return default
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        try:
+            seconds = (parsedate_to_datetime(str(value)) - datetime.now(timezone.utc)).total_seconds()
+        except (TypeError, ValueError):
+            return default
+    return min(max(seconds, 0.0), cap)
+
+
 def http_get_with_retry(session: requests.Session, url: str, *, params: dict | None, settings, logger,
                         label: str) -> requests.Response:
     """GET with bounded exponential backoff on transient failures only (429/5xx/timeouts/connection)."""
     for attempt in range(1, settings.max_retries + 1):
+        backoff = settings.retry_base_seconds * 2 ** (attempt - 1)
+        final = attempt == settings.max_retries
         try:
             response = session.get(url, params=params, timeout=settings.request_timeout)
         except (requests.Timeout, requests.ConnectionError) as exc:
-            wait = settings.retry_base_seconds * 2 ** (attempt - 1)
-            logger.warning("EXTRACT | %s request error attempt=%s/%s wait=%.1fs error=%s",
-                           label, attempt, settings.max_retries, wait, exc)
-            if attempt == settings.max_retries:
-                raise RetrievalError(f"{label}: failed after {settings.max_retries} attempts: {exc}") from exc
-            time.sleep(wait)
+            logger.warning("EXTRACT | %s request error attempt=%s/%s %s error=%s", label, attempt, settings.max_retries,
+                           "giving up" if final else f"wait={backoff:.1f}s", redact(exc))
+            if final:   # 'from None': the chained exception text would carry the unredacted URL
+                raise RetrievalError(f"{label}: failed after {settings.max_retries} attempts: {redact(exc)}") from None
+            time.sleep(backoff)
             continue
         if response.status_code == 200:
             return response
         if response.status_code in RETRYABLE_STATUS:
-            wait = settings.retry_base_seconds * 2 ** (attempt - 1)
-            retry_after = response.headers.get("Retry-After")
-            try:
-                retry_after = response.json().get("retry_after_seconds", retry_after)
-            except ValueError:
-                pass
-            if retry_after is not None:
-                wait = float(retry_after)
-            logger.warning("EXTRACT | %s retryable status=%s attempt=%s/%s wait=%.1fs",
-                           label, response.status_code, attempt, settings.max_retries, wait)
-            if attempt == settings.max_retries:
+            wait = server_requested_wait(response, backoff, settings.max_retry_wait_seconds)
+            logger.warning("EXTRACT | %s retryable status=%s attempt=%s/%s %s", label, response.status_code, attempt,
+                           settings.max_retries, "giving up" if final else f"wait={wait:.1f}s")
+            if final:
                 raise RetrievalError(f"{label}: status {response.status_code} after {settings.max_retries} attempts")
             time.sleep(wait)
             continue
-        raise RetrievalError(f"{label}: non-retryable status {response.status_code}: {response.text[:200]}")
+        raise RetrievalError(f"{label}: non-retryable status {response.status_code}: {redact(response.text[:200])}")
     raise RetrievalError(f"{label}: exhausted retries")  # pragma: no cover
 
 

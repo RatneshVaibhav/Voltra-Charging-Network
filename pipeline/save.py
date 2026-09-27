@@ -2,7 +2,8 @@
 
 All outputs are written to a temporary directory next to the target, then swapped in: an existing partition for
 the same run date is moved aside and deleted only after the new one is in place. A rerun for the same run date
-therefore replaces (never appends to) the previous output, and a crash mid-write never leaves a half partition.
+therefore replaces (never appends to) the previous output, a crash mid-write never leaves a half partition, and if
+the swap itself fails the previous partition is put back — a failed publish never removes published output.
 """
 from __future__ import annotations
 
@@ -27,10 +28,11 @@ def publish_partition(processed_dir: Path, run_date: str, outputs: dict, logger)
     processed_dir.mkdir(parents=True, exist_ok=True)
     target = processed_dir / f"run_date={run_date}"
     tmp = Path(tempfile.mkdtemp(prefix=f".tmp_run_date={run_date}_", dir=processed_dir))
+    backup = None
     try:
         for name, obj in outputs.items():
             _write(tmp / name, obj)
-        backup = None
+        tmp.chmod(0o755)          # mkdtemp creates 0700; published output must be readable by other users/services
         if target.exists():
             backup = processed_dir / f".old_run_date={run_date}"
             if backup.exists():
@@ -41,6 +43,8 @@ def publish_partition(processed_dir: Path, run_date: str, outputs: dict, logger)
             shutil.rmtree(backup)
     except Exception:
         shutil.rmtree(tmp, ignore_errors=True)
+        if backup is not None and backup.exists() and not target.exists():
+            backup.rename(target)                                # roll back to the previous published run
         raise
     logger.info("SAVE | published partition=%s files=%s (atomic swap)", target, len(outputs))
     return target

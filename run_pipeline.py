@@ -8,6 +8,9 @@
 Stages: EXTRACT -> VALIDATE(retrieval+schema) -> CLEAN -> VALIDATE(content) -> TRANSFORM -> VALIDATE(model)
         -> METRICS -> SAVE (atomic partition). Exit codes: 0 success · 2 validation gate stopped (nothing published)
         · 1 unexpected/retrieval failure.
+
+A chaos demo writes only under data/raw/chaos/<name>/, data/processed/chaos/<name>/ and logs/*_chaos-<name>.*, so it
+can never overwrite the real run's raw inputs, log or published partition.
 """
 from __future__ import annotations
 
@@ -59,20 +62,28 @@ def start_mock_api(settings: Settings, logger, outage: bool):
     raise RuntimeError("Mock status API did not become healthy within 30 s")
 
 
+def run_paths(rd: str, chaos: str) -> tuple[Path, Path, str]:
+    """(raw partition, processed root, log tag). Chaos demos are isolated from the real run."""
+    if chaos == "none":
+        return RAW_DIR / f"run_date={rd}", PROCESSED_DIR, rd
+    return RAW_DIR / "chaos" / chaos / f"run_date={rd}", PROCESSED_DIR / "chaos" / chaos, f"{rd}_chaos-{chaos}"
+
+
 def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
     settings = Settings.from_env()
     if chaos == "api_outage":
         settings = dataclasses.replace(settings, max_retries=3, retry_base_seconds=0.2)
     defs = load_kpi_definitions()
     rd = str(run_date.date())
-    logger = build_logger(LOG_DIR / f"pipeline_{rd}.log", settings.log_level)
+    raw, processed_root, tag = run_paths(rd, chaos)
+    failure_report = LOG_DIR / f"validation_{tag}.json"
+    logger = build_logger(LOG_DIR / f"pipeline_{tag}.log", settings.log_level)
     logger.info("START | run_date=%s offline=%s chaos=%s definitions=v%s", rd, offline, chaos, defs["version"])
     results: list[validate.CheckResult] = []
     api = None
     try:
         if settings.start_mock_api:
             api = start_mock_api(settings, logger, outage=chaos == "api_outage")
-        raw = RAW_DIR / f"run_date={rd}"
         # ---------------- EXTRACT
         files, ev_r1 = extract.extract_sessions(settings, raw, SNAPSHOT_DIR, offline, logger,
                                                 corrupt_one_file=chaos == "bad_checksum")
@@ -97,8 +108,10 @@ def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
             sessions_raw = pd.concat([sessions_raw, sessions_raw.sample(50, random_state=1)], ignore_index=True)
         sessions, clean_stats = clean.standardise_sessions(sessions_raw, logger)
         if chaos == "stale_data":
-            logger.warning("CHAOS | stale_data: shifting all session timestamps 120 days into the past")
-            sessions[["session_start", "session_end"]] -= pd.Timedelta(days=120)
+            late = sessions.loc[sessions["session_start"].idxmax(), "source_file"]
+            logger.warning("CHAOS | stale_data: the latest monthly export (%s) has not arrived — withholding its %s rows",
+                           late, int((sessions["source_file"] == late).sum()))
+            sessions = sessions[sessions["source_file"] != late].reset_index(drop=True)
         # ---------------- VALIDATE 2: content
         today = pd.Timestamp.now(tz="UTC")
         since = len(results)
@@ -152,15 +165,16 @@ def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
             "open_outages_at_data_end.csv": open_runs,
             "visits.csv": visits, "attempts.csv": attempts[attempt_cols],
         }
-        target = save.publish_partition(PROCESSED_DIR, rd, outputs, logger)
+        target = save.publish_partition(processed_root, rd, outputs, logger)
+        failure_report.unlink(missing_ok=True)       # a stale failure report must not outlive a successful run
         logger.info("DONE | published=%s FTCS baseline=%s%% 13m=%s%% validation=%s", target,
                     m["kpi"]["baseline_ftcs_pct"], m["kpi"]["ftcs_13_month_pct"], m["validation_summary"])
         print("\nPIPELINE SUCCESS")
         print(json.dumps({"kpi": m["kpi"], "validation": m["validation_summary"], "output": str(target)}, indent=2))
         return 0
     except validate.ValidationError as exc:
-        (LOG_DIR / f"validation_{rd}.json").write_text(json.dumps([r.as_dict() for r in results], indent=2))
-        logger.error("GATE | pipeline stopped | %s | no processed output published | see logs/validation_%s.json", exc, rd)
+        failure_report.write_text(json.dumps([r.as_dict() for r in results], indent=2))
+        logger.error("GATE | pipeline stopped | %s | no processed output published | see logs/%s", exc, failure_report.name)
         print(f"\nPIPELINE STOPPED AT VALIDATION GATE (exit 2): {exc}")
         return 2
     except extract.RetrievalError as exc:

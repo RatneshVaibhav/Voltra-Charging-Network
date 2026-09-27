@@ -50,6 +50,7 @@ class Settings:
     start_mock_api: bool
     max_retries: int
     retry_base_seconds: float
+    max_retry_wait_seconds: float
     request_timeout: float
     page_size: int
     sim_seed: int
@@ -69,6 +70,7 @@ class Settings:
             start_mock_api=_as_bool(os.getenv("START_MOCK_API"), True),
             max_retries=int(os.getenv("MAX_RETRIES", "4")),
             retry_base_seconds=float(os.getenv("RETRY_BASE_SECONDS", "1")),
+            max_retry_wait_seconds=float(os.getenv("MAX_RETRY_WAIT_SECONDS", "60")),
             request_timeout=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "30")),
             page_size=int(os.getenv("PAGE_SIZE", "1000")),
             sim_seed=int(os.getenv("SIM_SEED", "42")),

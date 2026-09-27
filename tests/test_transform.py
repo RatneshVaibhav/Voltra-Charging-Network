@@ -58,3 +58,31 @@ def test_visit_window_boundaries():
     assert len(_visits_for_gap(5.01)) == 2                    # just over -> new visit
     assert len(_visits_for_gap(-2)) == 1                      # small overlap tolerated
     assert len(_visits_for_gap(-2.01)) == 2
+
+
+def _model_checks(s, defs, log, tamper=None):
+    from pipeline.validate import check_model
+    dc = set(s["charger_id"])
+    _, chargers, diag = resolve_sites(s, _stations(), defs, log)
+    a, v = build_visits(build_attempts(s, dc, chargers, defs, log), grouping_key="site_id", min_gap=-2, max_gap=5)
+    if tamper:
+        a = tamper(a)
+    no_open = pd.DataFrame(columns=["site_id", "charger_id", "days_without_any_session_at_data_end",
+                                    "trailing_site_successes"])
+    return {r.check: r.status for r in check_model(a, v, diag, len(s), "snapshot", s["session_start"].max(), {},
+                                                   r1_columns=list(s.columns), r1_session_ids=set(s["session_id"]),
+                                                   open_runs=no_open)}
+
+
+def test_unresolved_charger_fails_the_model_gate(defs, log):
+    s = pd.DataFrame([session("1", "C8", "PX", "2024-01-01", 30, 20, name="NOWHERE / UNKNOWN")])
+    assert _model_checks(s, defs, log)["model.site_resolution"] == "FAIL"
+
+
+def test_simulated_or_foreign_rows_in_kpi_inputs_fail(defs, log):
+    s = pd.DataFrame([session("1", "C1", "P1", "2024-01-01", 30, 20)])
+    assert _model_checks(s, defs, log)["model.no_simulated_fields_in_kpi_inputs"] == "PASS"
+    assert _model_checks(s, defs, log, lambda a: a.assign(error_code="InternalError"))[
+        "model.no_simulated_fields_in_kpi_inputs"] == "FAIL"                     # a simulated column leaked in
+    assert _model_checks(s, defs, log, lambda a: a.assign(session_id="S1-EV-0001"))[
+        "model.no_simulated_fields_in_kpi_inputs"] == "FAIL"                     # a row that is not an R1 session

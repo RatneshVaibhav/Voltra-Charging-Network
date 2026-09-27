@@ -1,0 +1,81 @@
+{
+  "spec_version": "1.0.0",
+  "seed": 42,
+  "data_origin": "simulated",
+  "status_events": 124968,
+  "status_events_by_month": {
+    "2024-01": 4432,
+    "2024-02": 4579,
+    "2024-03": 5365,
+    "2024-04": 7040,
+    "2024-05": 7415,
+    "2024-06": 7800,
+    "2024-07": 9933,
+    "2024-08": 11578,
+    "2024-09": 10784,
+    "2024-10": 12847,
+    "2024-11": 13849,
+    "2024-12": 15745,
+    "2025-01": 13601
+  },
+  "work_orders": 426,
+  "inferred_outage_windows": 46,
+  "attempt_events_suppressed_inside_outages": 326,
+  "outage_categories": {
+    "awaiting_parts": 21,
+    "fault": 20,
+    "scheduled_maintenance": 5
+  },
+  "parameters": {
+    "awaiting_parts_hours": 168,
+    "maintenance_share": 0.15,
+    "fault_codes": [
+      [
+        "InternalError",
+        0.3
+      ],
+      [
+        "EVCommunicationError",
+        0.25
+      ],
+      [
+        "PowerSwitchFailure",
+        0.15
+      ],
+      [
+        "GroundFailure",
+        0.1
+      ],
+      [
+        "OverCurrentFailure",
+        0.1
+      ],
+      [
+        "OtherError",
+        0.1
+      ]
+    ],
+    "fault_actions": [
+      [
+        "remote_reset",
+        0.35
+      ],
+      [
+        "connector_replace",
+        0.2
+      ],
+      [
+        "power_module_replace",
+        0.2
+      ],
+      [
+        "firmware_update",
+        0.15
+      ],
+      [
+        "no_fault_found",
+        0.1
+      ]
+    ]
+  }
+}

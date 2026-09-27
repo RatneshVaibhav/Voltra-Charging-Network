@@ -194,7 +194,8 @@ def compute_metrics(attempts, visits, sites, charger_stats, outages, open_runs, 
         "kpi": {"name": defs["kpi"]["name"], "baseline_months": base, "baseline_ftcs_pct": pct(baseline["ftcs"], 2),
                 "ftcs_13_month_pct": pct(overall["ftcs"], 2), "reporting_month_ftcs_pct": pct(rm["first_attempt_success"].mean(), 2),
                 "headline": f"1 in {round(1 / (1 - baseline['ftcs']))} drivers fail on their first try (baseline quarter)",
-                "target_pct": 100 * defs["kpi"]["target"]["to"], "stretch_next_quarter_pct": 100 * defs["kpi"]["target"]["stretch_next_quarter"]},
+                "target_pct": 100 * defs["kpi"]["target"]["to"], "target_horizon_weeks": defs["kpi"]["target"]["horizon_weeks"],
+                "stretch_next_quarter_pct": 100 * defs["kpi"]["target"]["stretch_next_quarter"]},
         "overall_13_months": {k: (pct(v) if k.endswith("rate") or k == "ftcs" else (round(v, 2) if isinstance(v, float) else v))
                               for k, v in overall.items()},
         "baseline_quarter": {k: (pct(v) if k.endswith("rate") or k == "ftcs" else (round(v, 2) if isinstance(v, float) else v))
@@ -227,7 +228,8 @@ def evidence_table(m: dict, sens: pd.DataFrame) -> str:
     rows = [
         ("1", "First-Time Charge Success (FTCS) — **project KPI**", "Outcome", f"{k['baseline_ftcs_pct']}%",
          f"{k['ftcs_13_month_pct']}%", "Visits whose first attempt delivered ≥1 kWh ÷ visits (site-level, 5-min window)",
-         "Real", "This *is* the KPI: target ≥87% in 6 weeks", "Why a first attempt failed (charger, car, driver or payment)"),
+         "Real", f"This *is* the KPI: target ≥{k['target_pct']:g}% in {k['target_horizon_weeks']} weeks",
+         "Why a first attempt failed (charger, car, driver or payment)"),
         ("2", "Failed-visit rate", "Outcome", f"{b['failed_visit_rate']}%", f"{o['failed_visit_rate']}%",
          "Visits where no attempt delivered ≥1 kWh ÷ visits", "Real",
          "The worst outcome inside the KPI gap: drivers who left with nothing",
@@ -238,7 +240,8 @@ def evidence_table(m: dict, sens: pd.DataFrame) -> str:
          "Whether the retry fixed the charger or the driver changed something"),
         ("4", "Port-less share of failed attempts", "Instrumentation gap", f"{m['instrumentation']['unbound_share_of_failed_attempts_pct']}%",
          "—", "Failed attempts with no port recorded ÷ failed attempts", "Real",
-         "Nearly a third of failures cannot be attributed to a port, so crews cannot be sent to them", "What stage the attempt died at (auth, handshake, payment)"),
+         "Nearly a third of failed attempts die before a port is bound: the charger is known, but no connector-level "
+         "uptime or fault record can see them", "What stage the attempt died at (authorisation, handshake, payment)"),
         ("5", "Reliability-definition gap", "Operations / intervention",
          f"Operator uptime {rel['operator_noc_uptime_pct']}% · federal-style {rel['federal_style_uptime_pct']}% · inferred availability {rel['inferred_availability_real_pct']}% · FTCS {k['baseline_ftcs_pct']}%",
          "—", "Same fleet measured four ways; charger first-attempt success before → after corrective work orders: "

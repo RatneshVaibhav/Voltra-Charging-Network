@@ -1,5 +1,7 @@
 # Validation Contract (Class 6) — executable in `pipeline/validate.py`
 
+**Latest run (2025-02-01): 33 checks — PASS 17 · WARN 15 · UNKNOWN 1 · FAIL 0.**
+
 Format: **business assumption → data expectation → executable check → severity → action**.
 Severities: **FAIL** stops the run (exit 2, nothing published) · **WARN** = known issue handled by an explicit, counted
 rule · **UNKNOWN** = the data cannot answer the question. The latest results for every run are in
@@ -23,12 +25,12 @@ so the console shows what was accepted and why. Gate tolerances live in `config/
 | Timestamps are usable | parseable UTC | `sessions.timestamps_parse` | FAIL > 0.1% | Stop | PASS 0 |
 | Numbers are usable | `energy_kwh` always parses; peak power may be blank | `sessions.numeric_parse` | FAIL if any `energy_kwh` is missing (it would silently count as a failed attempt) · WARN for blank peak power | Stop / count; peak power left missing, never imputed — it is only used for DC classification (max per port) and the physics check | WARN 2,549 blank `peak_power_kw` (1,952 on port-less rows); 0 missing energy |
 | One row = one session | no session_id with conflicting values | `sessions.session_id_unique` | FAIL | Stop — cannot choose silently | PASS |
-| Exports are not duplicated | exact duplicate rows collapse | `sessions.exact_duplicates` | WARN | Keep one, count, log | none (demo: `--chaos duplicate_rows`) |
+| Exports are not duplicated | exact duplicate rows collapse | `sessions.exact_duplicates` | WARN | Keep one, count, log | none (demo: `--chaos duplicate_rows` → 50 collapsed) |
 | Session physics make sense | energy > 0 implies peak power > 0 | `sessions.energy_without_power` | WARN | Flag; **not** reclassified (energy is the KPI input) | WARN 1,766 |
 | Durations are plausible | ≥ 0 and ≤ 24 h | `sessions.duration_range` | WARN | Flag | WARN 89 > 24 h |
 | A port serves one car at a time | no overlaps on a port | `sessions.port_overlaps` | WARN | Visit rule tolerates −2 min | WARN 23 |
 | Every day is present | each month fully covered | `sessions.day_coverage` | WARN < 100%, FAIL < 90% | Report missing days; request re-export | WARN 13 days |
-| Data is current for the reporting month | latest start within 2 days of the reporting month's end | `sessions.freshness` | FAIL | Stop (demo: `--chaos stale_data`) | PASS lag 1.01 d |
+| Data is current for the reporting month | latest start within 2 days of the reporting month's end | `sessions.freshness` | FAIL | Stop (demo: `--chaos stale_data` withholds the January export → lag 32 days) | PASS lag 1.01 d |
 | — | age vs today | `sessions.wall_clock_age` | WARN | Label as historical backfill | WARN 604 days |
 
 ## Semantic checks
@@ -36,7 +38,7 @@ so the console shows what was accepted and why. Gate tolerances live in `config/
 | Business assumption | Data expectation | Check | Severity | Action | Latest result |
 |---|---|---|---|---|---|
 | A blank error field means success | `session_error` populated for failed sessions | `sessions.session_error_semantics` | WARN | **Rejected assumption**: failures inferred from energy < 1 kWh (D2) | WARN 0 of 46,575 populated |
-| Rows without a port are bad data | — | `sessions.blank_port_id` | WARN | **Kept** as unbound failed attempts (99.9% are 0 kWh) — dropping inflates FTCS ~4 pts | WARN 2,187 kept |
+| Rows without a port are bad data | — | `sessions.blank_port_id` | WARN | **Kept** as unbound failed attempts (99.9% are 0 kWh) — dropping would inflate FTCS by 4.30 pts to 90.33% (`metrics.json → judgement_call`) | WARN 2,187 kept |
 | The export tells us the site | `site_id`/`station_id` populated | `sessions.source_site_id_blank`, `…station_id_blank` | WARN | Resolve sites from the registry instead | WARN (always blank) |
 | Charger names identify sites | names stable, prefix = site | `sessions.evse_name_stability` | WARN | Names are not used as keys; prefix is an owner | WARN 12 blank, 19 renamed |
 | Registry addresses identify sites | one spelling per site | `model.address_variants` | WARN | Cluster by coordinates (150 m) | WARN 43 → 40 |

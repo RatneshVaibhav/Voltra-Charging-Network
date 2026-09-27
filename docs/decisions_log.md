@@ -2,7 +2,22 @@
 
 Every consequential choice in this project, with the options considered, the evidence, and the consequence.
 Format per entry: **Decision · Options considered · Evidence · Rationale · Consequences · Status**.
-Changing a locked decision requires a new dated entry here — never an unlogged code change.
+Changing a locked decision requires a new dated entry here — never an unlogged code change. Figures first recorded
+before a later correction are kept visible and marked *(superseded …)* — the history of how a number moved is evidence.
+
+## Decision index
+| # | Decision | Why, in one line | Enforced in |
+|---|---|---|---|
+| D1 | Headline at driver-visit grain, baseline = last quarter: *1 in 7 drivers fail on the first try* | The KPI, the baseline and the headline must share one grain and one period | `metrics.py` (`kpi.headline`) |
+| **D2** | **Failed attempt = < 1 kWh; 2,187 port-less DC attempts are kept as failures** | **They are failed charges (99.9% zero energy); dropping them would show 90.3% instead of 86.0%** | `transform.build_attempts`, `metrics.judgement_call` |
+| D3 | Visit = same site, next attempt within [−2, +5] min of the previous one ending | Fail-vs-success gap curves cross at ~5 min, matching UC Davis; drivers change charger | `transform.build_visits` |
+| D4 | Simulate only the status feed and work orders, anchored to real signals, never in the KPI | No operator publishes them; the uptime claim cannot be tested without them | `simulate/`, `model.no_simulated_fields_in_kpi_inputs` |
+| D5 | Fictional persona, site codes, no named operator | The dataset does not say whose network it is | README §10 |
+| D6 | Freshness judged against the logical run date; wall-clock age is a WARN | Historical data would fail a wall-clock check on every run | `validate.check_sessions` |
+| D7 | Physical site = registry coordinates within 150 m | Address text split 3 real sites into 6 | `transform.resolve_sites` |
+| D8 | Changed file layout and missing energy FAIL; integrity checked by content | Silent re-mapping or NaN energy would corrupt the KPI unseen | `clean.py`, `validate.py` |
+| D9 | Retry switching by charger; judgement call and open outages computed every run | Numbers must answer the question they are labelled with, and be reproducible | `metrics.py`, `inference.py` |
+| D10 | Failure demos isolated from the real run; stale = a late export | A demo must never change the published result | `run_pipeline.run_paths` |
 
 ---
 
@@ -10,6 +25,7 @@ Changing a locked decision requires a new dated entry here — never an unlogged
 **Date:** 2026-09-27 · **Status:** Locked (amended same day after D2/D3 evidence — see C3, C4)
 
 **Decision.** Headline: *"Our fast chargers report 99% uptime — so why do 1 in 6 drivers fail on their first try?"*
+*(superseded the same day by the amendment below: **1 in 7**, baseline quarter)*
 Business problem stated at **driver-visit grain** with a recent-quarter baseline.
 
 **Options considered.**
@@ -20,7 +36,8 @@ Business problem stated at **driver-visit grain** with a recent-quarter baseline
 | C | Keep Assignment 1's "a third of drivers can't charge" | Rejected. National 2026 failure rate is 12% (J.D. Power); only the worst site approaches it (69.2%) |
 
 **Evidence.** J.D. Power 2026 EVX: non-charging visits at an all-time low of 12%. Paren Q2 2026: national reliability
-index 93.8%, laggard states ~78%. Our data: FTCS 83.8% (13 months), 86.0% (recent quarter), worst site 69.2%.
+index 93.8%, laggard states ~78%. Our data: FTCS 83.8% (13 months; 83.87% after D7), 86.0% (recent quarter; 86.03%
+after D7), worst site 69.2%.
 
 **Amended target (after C3/C4).** Lift FTCS **86.0% → ≥ 87% in 6 weeks** by bringing the 5 lagging sites to the network
 median, **and** close the diagnostic gap (every failed attempt carries a port and a cause) so a ≥ 90% target can be set
@@ -49,16 +66,30 @@ as failed attempts attributed to their charger's site. FTCS at `> 0 kWh` is alwa
 | ≥ 0.5 kWh | Initial ad-hoc choice (no source) | — (superseded) |
 | **≥ 1.0 kWh** | **UC Davis, Gamage et al. 2024 (peer-reviewed, TRR): events > 1 kWh are successful; 1 kWh ≈ 3–4 miles** | **83.9%** |
 
+**The judgement call — what to do with 2,187 rows that have no `port_id`.**
+| Treatment | Effect | Verdict |
+|---|---|---|
+| Drop them as bad keys (the reflex "cleaning" move) | FTCS reads **90.33%** instead of 86.03% (+4.30 pts); 29.6% of failed attempts vanish; the ≥ 90% stretch target looks met with no repair | Rejected |
+| Exclude them as non-DC (the first attempt, C2) | Same inflation — and factually wrong: every one is on a DC charger | Rejected |
+| Lump them into one pseudo-port | Invents a port that does not exist; site counts went wrong (58 vs 43, C2) | Rejected |
+| Impute the charger's port (each DC charger has one port id) | Plausible location, but it fabricates a field the system never recorded and hides the gap we need the vendor to close | Rejected |
+| **Keep them as failed attempts at their charger's site, key `UNBOUND@<charger>`** | FTCS 86.03%; every failure stays counted; the gap becomes a finding and an instrumentation request | **Chosen** |
+
 **Evidence.** DC energy distribution is bimodal: 6,899 attempts at exactly 0 kWh; only 474 in (0, 1); 27,777 above 5 kWh.
 93.6% of sub-1 kWh attempts are exactly zero → every threshold option lands within 0.9 pts.
-Blank-port rows: 2,187 (4.7% of all sessions), **all on DC chargers, 99.9% zero-energy**, median 2 min.
+Blank-port rows: 2,187 (4.7% of all sessions), **all on DC chargers, 99.9% zero-energy**, median 2 min — the signature of
+an attempt that started and died before a port was bound, not of a corrupt row. All of these are recomputed on every
+run in `metrics.json → judgement_call`.
 
 **Rationale.** Most defensible published source; represents "meaningful charge" from the driver's view; low sensitivity.
 Unbound attempts are failed fast-charge attempts that died before the port was recorded — dropping them as "bad keys"
-would remove 29.7% of all failures and inflate FTCS by ~4 pts.
+would remove 29.6% of all failed attempts *(29.7% before D7)* and inflate FTCS by **4.30 pts** in the baseline quarter
+and 5.05 pts over 13 months *(first quoted as "~4 pts"; computed every run since D9)*.
 
 **Consequences.** DC classification must be at **charger** level (failed attempts have peak power 0). Zero energy is an
-*inferred* failure — cause (charger / vehicle / driver / payment) is unknown. Rows with energy > 0 but peak power 0
+*inferred* failure — cause (charger / vehicle / driver / payment) is unknown. The charger of a port-less attempt is
+known, so the site and charger attribution is real; what is missing is the port and the failure stage, which is why no
+connector-level uptime or fault record can see these attempts (C18). Rows with energy > 0 but peak power 0
 (1,671 DC) are flagged WARN, not reclassified.
 
 ---
@@ -68,7 +99,8 @@ would remove 29.7% of all failures and inflate FTCS by ~4 pts.
 
 **Decision.** A visit = consecutive attempts at the **same physical site**, where each attempt starts within **[−2, +5]
 minutes** of the previous attempt's end. Site = normalised registry address (`street_address|city`) via the resolution
-chain port_id→AFDC posts, else name match, else unresolved. Visit succeeds if **any** attempt succeeds.
+chain port_id→AFDC posts, else name match, else unresolved *(site part superseded by D7: registry coordinates clustered
+within 150 m)*. Visit succeeds if **any** attempt succeeds.
 
 **Options considered.**
 | Rule | Source | FTCS | Failed visits |
@@ -82,13 +114,14 @@ chain port_id→AFDC posts, else name match, else unresolved. Visit succeeds if 
 **Evidence.** Fail-vs-success gap ratio (gap to the next attempt at the same site, after a failed vs a successful
 attempt): 13.8× in (0,1] min, 5.3× (1,2], 2.1× (2,3], 1.3× (3,5], **0.6× (5,7.5]**, 0.4× (7.5,10], ≤0.2× beyond.
 After a success the next session is almost always a new driver; excess short gaps after failures are retries. The curves
-cross at ~5 min — independently matching UC Davis. 42.3% of multi-attempt visits switch port, so port-level grouping
-splits real retries into fake failed visits.
+cross at ~5 min — independently matching UC Davis. 42.3% of multi-attempt visits switch port *(43.5% after D7 — and
+see the D9 amendment below for what this number does and does not measure)*, so port-level grouping splits real retries
+into fake failed visits.
 
 **Rationale.** Empirically supported on our own data *and* in peer-reviewed work; site-level captures port switching.
 We have no driver IDs, so this is the UC Davis "Variation 2" approximation.
 
-**Amendment 2026-09-27.** (1) The 2-minute row was mislabelled: 83.2% / 7.6% was *site*-level; true port-level is
+**Amendment 2026-09-27.** (1) The 2-minute row was mislabelled: 83.2% / 7.6% *(7.5% after D7)* was *site*-level; true port-level is
 82.4% / 11.3% (C8). (2) Ordering and gap are now fully specified: sort by (site, start, end, session_id); the gap is
 measured to the **previous row's** end at the same site (a visit-max-end rule would wrongly split retries made while
 another driver was still charging). (3) Tested refinement "a successful attempt closes the visit" moved FTCS by only
@@ -113,7 +146,8 @@ simulated data touch the KPI. Two sources:
 - **S1 Charger status feed** (mock REST API; OCPP 1.6-style StatusNotifications) derived from real sessions + real
   inferred outage windows. Invented: fault codes; counted-vs-excluded outage categories (reproduces the NOC's "99%").
 - **S2 Maintenance work orders** (SQLite) — one corrective order per real inferred outage window + quarterly PM.
-  Invented: detection lag, trigger, action, resolution code. Repair effect measured on real sessions.
+  Invented: detection lag, trigger, action, resolution code. Repair effect measured on real sessions (illustrative, no
+  control group — D9).
 - **No simulated support tickets** — driver interactions are real (retries, port switches).
 - `client_brief.json` holds the leadership claim and conflicting stakeholder definitions.
 
@@ -124,8 +158,10 @@ rejected (no public status or maintenance data; cannot test the uptime claim or 
 **Evidence (anchor).** Statistical outage inference on real sessions at 35 multi-charger sites (80 chargers): run of *k*
 consecutive site successes on other chargers flagged when (1−p)^k < 0.001, bounded to commissioned life → **44 windows**,
 fleet availability **97.05%**, **14 silent chargers** (≥99% available, first-attempt success < 80%), corr(availability,
-FTCS) = 0.59. A first, naive idle-gap heuristic (≥6 h silent while siblings charge) was **rejected**: it implied 75%
-availability because idle ≠ down at low-utilisation sites.
+FTCS) = 0.59 *(first recorded on the 43 address keys; after D7, on 40 sites: 38 multi-charger sites / 86 chargers →
+**46 windows**, 97.05%, **15 silent chargers**, corr 0.55, plus 2 runs still open at the data end, listed for
+verification — D9)*. A first, naive idle-gap heuristic (≥6 h silent while siblings charge) was **rejected**: it implied
+75% availability because idle ≠ down at low-utilisation sites.
 
 **Integrity rules.** Seeded deterministic generators; `data_origin = "simulated"` on every record; `SIMULATION_SPEC.md`
 marks real-anchor vs assumption; simulated-input metrics labelled "illustrative"; pipeline validates simulated sources.
@@ -140,12 +176,17 @@ process — must be verified against a real CMMS (listed as an assumption).
 **Date:** 2026-09-27 · **Status:** Locked
 
 **Decision.** Fictional persona **"Voltra Charging Network"** with an explicit Data Provenance section; site codes
-S01–S43 in outputs with a lookup to public addresses; Class-8-style layout (`run_pipeline.py`, `pipeline/`, `simulate/`,
-`data/`, `docs/`, `notebooks/`, `tests/`).
+S01–S40 *(S01–S43 before D7)* in outputs with a lookup to public addresses; Class-8-style layout (`run_pipeline.py`,
+`pipeline/`, `simulate/`, `data/`, `docs/`, `tests/`). A `notebooks/` folder was planned and dropped: exploration ran as
+scripts in the git-ignored `.scratch/`, and everything a reader needs is reproduced by `run_pipeline.py`.
 
 **Options considered.** Name the real network — rejected: the dataset does not identify itself as any specific network
 (site names suggest TVA Fast Charge Network partners, but that is our inference), so attributing failure rates to named
-public utilities would overclaim.
+public utilities would overclaim. Generic persona with no provenance note — rejected: a reader could mistake real data
+for invented data.
+
+**Consequences.** Every result says "Voltra (fictional persona)"; the real source and licence (CC-BY-4.0) are cited; site
+addresses are public registry data, shown only to make the crew list actionable.
 
 ---
 
@@ -158,8 +199,18 @@ known one-day export gap needs ~1 day of tolerance); otherwise FAIL. Age versus 
 never a FAIL. The **baseline** is the last three monthly exports in the data, anchored to the end of the data, not the
 run date.
 
-**Why.** The data is a historical export (ends Jan 2025). Judging freshness against the wall clock would fail every run
-and teach nothing; judging it against the logical date keeps the check meaningful and demonstrable (`--chaos stale_data`).
+**Options considered.**
+| Freshness judged against | Result on this data | Verdict |
+|---|---|---|
+| Today's date (wall clock) | FAIL on every run — the data is 604 days old | Rejected: a check that always fails teaches nothing and gets ignored |
+| No freshness check | A late export would be published as "January" | Rejected |
+| **The logical run date's reporting month, 2-day tolerance** | PASS (lag 1.01 days); a late export FAILs (demo: lag 32 days) | **Chosen**; wall-clock age kept as a WARN |
+
+**Why 2 days.** Every monthly export stops one day early (C10), so a complete export already lags ~1 day; 2 days
+tolerates that and nothing more.
+
+**Consequences.** The pipeline can be re-run for any past month (`--run-date`) and still judge freshness correctly.
+The baseline is anchored to the data, so re-running later never shifts the baseline quarter.
 
 ## D7 — Physical sites by distance, not address text
 **Date:** 2026-09-27 · **Status:** Locked
@@ -169,6 +220,16 @@ and teach nothing; judging it against the logical date keeps the check meaningfu
 **Evidence.** Address text split three real sites into six ("10772 US-51" vs "10772 U.S. 51", "114 SW ATLANTIC ST" vs
 "… ST.", "110 COLLEGE ST W" vs "… STREET WEST"). Within-site distances are ≤ 33 m; the nearest separate site is 17 km
 away, so any threshold between those gives the same **40 sites** (not 43).
+
+**Options considered.**
+| Site key | Result | Verdict |
+|---|---|---|
+| `evse_name` prefix | 39 "sites" — the prefix is the owning organisation, not a place (C1) | Rejected |
+| Registry address text | 43 sites — three real sites split by spelling (C7) | Rejected |
+| AFDC station id | 88 — one registry record per charger here | Rejected: not a site |
+| **Registry coordinates, single-linkage within 150 m** | **40 sites**; stable for any threshold from 33 m to 17 km | **Chosen** |
+
+**Consequences.** Visits can span every charger at a physical site (D3), and the crew list names real places.
 
 
 ## D8 — Validation hardening after independent review (definitions v1.2.0)
@@ -181,6 +242,7 @@ away, so any threshold between those gives the same **40 sites** (not 43).
 3. **Integrity checks test content, not column names.** Every attempt must be a real R1 `session_id`; KPI inputs may only
    hold R1 columns plus an allowlist of derived columns; every attempt sits in exactly one visit.
 4. **Gate tolerances are configuration** (`validation_tolerances` in `config/kpi_definitions.json`), not literals in code.
+   *(v1.3.1, same day: the 24-hour session plausibility limit and the target wording of the evidence table followed.)*
 5. **Gates speak on success.** Each gate logs its PASS/WARN counts and one line per WARN/UNKNOWN.
 
 **Options considered.**
@@ -271,3 +333,4 @@ in the same change: a failed partition swap now restores the previous partition 
 | C15 | Inferred outages still open at the data end were silently ignored — two S29 chargers dark for ~25 days at the end of the reporting month | Review F5 | Listed for on-site verification (WARN), never counted as downtime (D9) |
 | C16 | The judgement call's "~4 pts" was quoted from exploration; no code produced it | Review F12 | Computed every run: 90.33% (+4.30) quarter · 88.92% (+5.05) 13 months (D9) |
 | C17 | "Repair effect: median FTCS" was a charger-level measure with no control group | Review F14 | Relabelled with caveat (D9) |
+| C18 | Docs said port-less failures "cannot be located, so no crew can be sent" — but every one carries its charger id and each DC charger has one port, so the charger is known; what is missing is the port binding and the failure stage, which keeps them out of any connector-level uptime or fault record | Re-reading D2 while fixing F3 | Wording corrected everywhere; the instrumentation ask (record port + error code on every attempt) is unchanged |

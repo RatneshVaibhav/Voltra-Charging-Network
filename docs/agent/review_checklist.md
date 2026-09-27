@@ -82,7 +82,7 @@ Verdict per review: **READY** (no BLOCKER/MAJOR) · **READY WITH FIXES** (MAJORs
 - Required-fields list (minimum per source) with justification.
 - System-of-record table for: session outcome, energy delivered, port identity, site identity, charger availability,
   repair events, KPI definition — each with reasoning.
-- Diagram of sources and how they connect (`docs/diagrams/`).
+- Diagram of sources and how they connect (mermaid in `docs/source_map.md`; pipeline flow in `README.md` §6).
 - Every number quoted matches `docs/agent/reference_numbers.md`.
 
 **Phase 3 — Retrieval**
@@ -134,7 +134,7 @@ Verdict per review: **READY** (no BLOCKER/MAJOR) · **READY WITH FIXES** (MAJORs
 ```bash
 git log --oneline --decorate -n 10         # what phase is this?
 git diff phase-<N-1>..HEAD --stat          # what changed in this phase
-python run_pipeline.py --run-date 2026-09-27   # (from Phase 6; earlier phases: run the phase's scripts/notebooks)
+python run_pipeline.py --offline               # (logical run date defaults to 2025-02-01)
 pytest -q                                   # (when tests exist)
 ```
 Compare outputs against `docs/agent/reference_numbers.md` (exact counts, ±0.1 pp rates).

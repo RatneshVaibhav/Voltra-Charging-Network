@@ -135,9 +135,10 @@ def check_sessions(s: pd.DataFrame, clean_stats: dict, defs: dict, run_date: pd.
     out.append(_r("sessions.energy_without_power", "technical", "WARN" if odd else "PASS",
                   f"energy_kwh>0 with peak_power_kw=0 (physically inconsistent) rows={odd}; flagged, not reclassified", odd))
     dur = (s["session_end"] - s["session_start"]).dt.total_seconds() / 60
-    neg, long_ = int((dur < 0).sum()), int((dur > 1440).sum())
+    max_min = tol["max_plausible_session_minutes"]
+    neg, long_ = int((dur < 0).sum()), int((dur > max_min).sum())
     out.append(_r("sessions.duration_range", "technical", "WARN" if (neg or long_) else "PASS",
-                  f"negative durations={neg}; sessions longer than 24 h={long_}", neg + long_))
+                  f"negative durations={neg}; sessions longer than {max_min / 60:g} h={long_}", neg + long_))
     ports = s[s["port_id"] != ""].sort_values(["port_id", "session_start"])
     overlap = int(((ports["session_start"] - ports.groupby("port_id")["session_end"].shift()).dt.total_seconds() < 0).sum())
     out.append(_r("sessions.port_overlaps", "technical", "WARN" if overlap else "PASS",

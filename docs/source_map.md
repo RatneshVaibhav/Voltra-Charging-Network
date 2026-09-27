@@ -59,8 +59,9 @@ before it can fix the rest?"** Every source below is here because a business que
 
 1. **No failure cause.** `session_error` is blank on all 46,575 rows although the federal reporting format expects an
    error on unsuccessful sessions. Failures are *inferred* from energy (< 1 kWh). → Operator must populate error codes.
-2. **Port-less attempts.** 2,187 attempts (29.6% of failures) have no port — they died before the port was recorded,
-   so no crew can be sent to them. → Record port at plug-in / authorisation.
+2. **Port-less attempts.** 2,187 attempts (29.6% of failed attempts) have no port — they died before a port was bound.
+   The charger is known, but no connector-level uptime or fault record can see them, and the failing stage is unknown.
+   → Record the port at plug-in / authorisation.
 3. **No driver identity.** Visits are reconstructed from site + 5-minute gaps (UC Davis "no user ID" method).
    → Capture an anonymised driver/vehicle token.
 4. **No status or outage history.** The "99% uptime" cannot be checked against the real data; outages are inferred.
@@ -69,6 +70,8 @@ before it can fix the rest?"** Every source below is here because a business que
    Checksums prove we received exactly what was published — the publication itself is incomplete. → Re-export.
 6. **Registry is time-misaligned** (2026 snapshot vs 2024 sessions) — identity and location only.
 7. **No KPI owner.** → A named owner must sign off the definition before the number is published as a target.
+8. **Peak power missing on 2,549 rows (5.5%).** Only used to classify DC chargers (max per port), so no number moves;
+   left missing, never imputed (D8). → Ask the vendor why the meter value is dropped.
 
 ```mermaid
 flowchart LR

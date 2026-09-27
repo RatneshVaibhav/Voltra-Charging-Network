@@ -2,11 +2,36 @@
 
 > **"Our fast chargers report 99% uptime — so why do 1 in 7 drivers fail on their first try?"**
 
-A dependable monthly data pipeline that turns fragmented EV-charging data into a trustworthy measure of the reliability
-drivers actually experience. It was built for the FDE Data Foundations assignment (Classes 4–8, Track C:
-*from client data to a dependable pipeline*). The client, **Voltra, is a fictional persona**. The charging sessions and
-the station registry are **real public data**. Two operator systems no one publishes are **simulated and labelled as
-such** (§5).
+**In one sentence:** a one-command data pipeline that measures the reliability *drivers* experience at an EV
+fast-charging network, and shows why the operator's "99% uptime" cannot see it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/reliability_gap_dark.svg">
+  <img src="docs/img/reliability_gap_light.svg" width="760" alt="Same fleet, four ways of measuring reliability: operator uptime 99.77% (simulated status feed), federal-style uptime 98.18% (simulated status feed), charger availability inferred from real sessions 97.05%, drivers' first-try success 86.03% (the KPI, real sessions).">
+</picture>
+
+Built for the FDE Data Foundations assignment (Classes 4–8, Track C: *from client data to a dependable pipeline*).
+The client, **Voltra, is a fictional persona**. The charging sessions and the station registry are **real public
+data**. Two operator systems no one publishes are **simulated and labelled as such** (§5).
+
+### The whole project in one picture
+```mermaid
+flowchart TD
+  claim["The client's claim: <b>99% uptime</b><br/>Drivers: <i>the chargers don't work</i>"] --> q{"What do drivers<br/>actually experience?"}
+  q --> R1["R1 · 46,575 charging sessions<br/>real · files over HTTP"]
+  q --> R2["R2 · DOE station registry<br/>real · REST API"]
+  q --> S1["S1 · charger status feed<br/>simulated · paginated API"]
+  q --> S2["S2 · maintenance work orders<br/>simulated · SQL"]
+  R1 & R2 & S1 & S2 --> P["<b>One-command pipeline</b><br/>extract → 3 validation gates → model → metrics → atomic save"]
+  P --> K["<b>KPI · first-time charge success = 86.03%</b><br/>1 in 7 drivers fail on their first try"]
+  K --> A1["Send crews to 5 sites<br/>→ 87% in 6 weeks"]
+  K --> A2["Check S29<br/>2 chargers dark since January"]
+  K --> A3["Vendor must record<br/>port + error code on every attempt"]
+  classDef kpi stroke:#3987e5,stroke-width:3px
+  classDef sim stroke-dasharray:4 3
+  class K kpi
+  class S1,S2 sim
+```
 
 | At a glance | |
 |---|---|
@@ -15,6 +40,15 @@ such** (§5).
 | **The judgement call** | 2,187 attempts with no port id were **kept as failed attempts**, not dropped. Dropping them would have shown **90.33%** — the stretch target, "met" with no repair at all (§4) |
 | **Run it** | `python run_pipeline.py --offline` → about 10 s, exit code 0, results in `data/processed/run_date=2025-02-01/` |
 | **Trust it** | 3 validation gates (33 checks), 5 failure demos, 30 tests, byte-identical reruns |
+
+**How to read this repo:**
+
+| If you have… | Read |
+|---|---|
+| **1 minute** | The chart, the picture and the table above |
+| **5 minutes** | §1–§4: the problem, the decision, the KPI and the judgement call (each has a diagram) |
+| **15 minutes** | §5–§8, then run it yourself (§7) and break it on purpose (§8) |
+| **1 hour** | [`docs/evidence.md`](docs/evidence.md), [`docs/decisions_log.md`](docs/decisions_log.md), [`docs/validation_contract.md`](docs/validation_contract.md) |
 
 **Contents:** [1 Problem](#1-the-problem-in-60-seconds) · [2 Decision](#2-the-decision-this-supports-and-for-whom) ·
 [3 KPI](#3-the-kpi--first-time-charge-success-ftcs) · [4 Judgement call](#4--the-fde-judgement-call-keep-the-port-less-attempts) ·
@@ -37,7 +71,7 @@ charging sessions (Jan 2024 – Jan 2025) from 88 DC fast chargers at 40 physica
   or fault record can see them.
 - **Uptime cannot see these failures.** The same fleet reads 99.77% on the operator's definition and 98.18% on a
   federal-style definition (both from the *simulated* status feed, illustrative). Availability inferred from the real
-  sessions is 97.05%. And drivers experience **86.03%**.
+  sessions is 97.05%. And drivers experience **86.03%** (the chart at the top of this page).
 
 ## 2. The decision this supports (and for whom)
 **Question:** *which sites need crews now, and what must the operator start recording before it can fix the rest?*
@@ -74,6 +108,32 @@ No KPI owner is documented. The validation gate flags this as **UNKNOWN**, and t
 - **Robust by design:** across every tested definition, FTCS stays within 82.4–84.8% (13 months) and 84.5–86.6%
   (baseline quarter).
 
+**What happens to a driver** (baseline quarter, 9,976 visits):
+```mermaid
+flowchart LR
+  A["Driver arrives<br/>at a site"] --> B{"First attempt<br/>delivers ≥ 1 kWh?"}
+  B -->|"yes · 86.0%"| S["✅ <b>First-time success</b><br/>this is the KPI"]
+  B -->|"no · 14.0%"| R{"A later attempt at the site,<br/>within 5 min, delivers ≥ 1 kWh?"}
+  R -->|"yes · 9.3%"| T["🔁 Troubled success<br/>got a charge on a retry"]
+  R -->|"no · 4.7%"| F["❌ Failed visit<br/>left with nothing"]
+  classDef kpi stroke:#3987e5,stroke-width:3px
+  class S kpi
+```
+
+**How attempts become visits** (an illustration, not real data). The rule is the gap between one attempt ending and
+the next one starting at the same site:
+```mermaid
+flowchart LR
+  subgraph v1["Visit 1 · troubled success"]
+    direction LR
+    a1["14:00–14:02<br/>charger A · 0 kWh<br/>❌ failed"] -->|"next starts 1 min later<br/>≤ 5 min → same driver"| a2["14:03–14:38<br/>charger B · 24 kWh<br/>✅ charged"]
+  end
+  subgraph v2["Visit 2 · first-time success"]
+    b1["14:50–15:30<br/>charger A · 31 kWh<br/>✅ charged"]
+  end
+  a2 -->|"12 min gap<br/>> 5 min → new driver"| b1
+```
+
 **Why this KPI and not uptime or attempt success?** Uptime measures the charger's point of view, and a failed
 handshake returns the connector to *Available*. Attempt success counts retries as extra failures. FTCS measures what
 the driver experiences: *did I get a charge the first time I tried?*
@@ -85,6 +145,26 @@ Every rule is versioned in [`config/kpi_definitions.json`](config/kpi_definition
 ## 4. ⭐ The FDE judgement call: keep the port-less attempts
 **The situation.** 2,187 session rows (4.7%) have a blank `port_id`. Every cleaning checklist says a row with a
 missing key is a bad row, so the reflex is to drop it.
+
+**The call in one picture:**
+```mermaid
+flowchart TD
+  X["<b>2,187 rows (4.7%) have no port_id</b><br/>The reflex: 'bad key → drop the row'"] --> C{"Check before<br/>touching them"}
+  C --> c1["All on DC fast chargers"]
+  C --> c2["99.9% delivered 0 kWh"]
+  C --> c3["Median length 2 minutes"]
+  C --> c4["Charger id still present"]
+  c1 & c2 & c3 & c4 --> V["<b>They are failed charging attempts</b><br/>that died before a port was bound"]
+  V --> O1["❌ Drop them<br/>FTCS reads 90.33%<br/>stretch target 'met' with no repair"]
+  V --> O2["❌ Invent a port<br/>fabricates a field the<br/>system never recorded"]
+  V --> O3["✅ <b>Keep as failed attempts</b><br/>key UNBOUND@charger<br/>FTCS 86.03%"]
+  O3 --> F1["Finding: ~1 in 3 failures never reach<br/>connector-level uptime or fault records"]
+  O3 --> F2["Action: the vendor must record<br/>port + error code on every attempt"]
+  classDef no stroke:#d03b3b,stroke-width:2px
+  classDef yes stroke:#0ca30c,stroke-width:3px
+  class O1,O2 no
+  class O3 yes
+```
 
 **What I checked before touching them:**
 | Test | Result | Meaning |
@@ -103,6 +183,36 @@ They are **failed charging attempts that died before a port was bound**, not cor
 | Impute the charger's port | 86.03%, but it fabricates a field the system never recorded and hides the gap | Rejected |
 | **Keep them as failed attempts at their charger's site (`UNBOUND@<charger>`)** | **86.03%** | **Chosen** |
 
+**What the pipeline writes about it on every run** (real output of the `judgement_call` command in §7, abridged —
+`…` marks omitted lines):
+```text
+{
+  "decision": "D2 — keep port-less (unbound) attempts on DC chargers as failed attempts",
+  "port_less_attempts": 2187,
+  …
+  "all_blank_port_rows_on_dc_chargers": true,
+  "zero_energy_pct": 99.9,
+  "median_duration_min": 2.0,
+  "share_of_failed_attempts_pct": 29.6,
+  "ftcs_baseline_kept_pct": 86.03,
+  "ftcs_baseline_if_dropped_pct": 90.33,
+  …
+  "inflation_if_dropped_pts": {
+    "baseline_quarter": 4.3,
+    "13_months": 5.05
+  },
+  "dropping_would_appear_to_meet_stretch_target": true,
+  "stretch_target_pct": 90.0
+}
+```
+**And what it prints on every run** (from the run log; timestamps removed):
+```text
+VALIDATE | retrieval/schema gate PASSED | PASS=9 WARN=1
+VALIDATE | content gate PASSED | PASS=3 WARN=11
+VALIDATE | WARN sessions.blank_port_id n=2187 | blank port_id rows=2187; KEPT as unbound attempts (D2), never dropped
+VALIDATE | model gate PASSED | PASS=5 UNKNOWN=1 WARN=3
+```
+
 **Why this is the FDE call.** Dropping the rows would have been the "clean data" move, and it would have handed the
 client a number that looks like success. Keeping them preserved the truth. It also turned a data defect into two
 business findings: a third of failures are invisible to connector-level uptime, and the fix is an instrumentation
@@ -115,6 +225,24 @@ request to the vendor, not a cleaning rule.
 - Tests: `test_dc_is_classified_per_charger_and_unbound_rows_are_kept`, `test_dropping_port_less_attempts_is_measured_not_applied`.
 
 ## 5. Data sources and where the truth lives
+```mermaid
+flowchart LR
+  subgraph real["Real public data"]
+    R1["<b>R1</b> Session exports<br/>13 monthly CSVs"]
+    R2["<b>R2</b> DOE station registry<br/>4,593 records"]
+  end
+  subgraph sim["Simulated · labelled · never in the KPI"]
+    S1["<b>S1</b> Status feed<br/>124,968 events"]
+    S2["<b>S2</b> Work orders<br/>426 rows"]
+  end
+  R1 -->|"metered energy per attempt<br/>= system of record"| KPI["<b>FTCS</b><br/>the KPI"]
+  R2 -->|"coordinates → 40 physical sites"| KPI
+  S1 -.->|"operator & federal uptime"| CTX["Illustrative<br/>context metrics"]
+  S2 -.->|"repairs before / after"| CTX
+  classDef kpi stroke:#3987e5,stroke-width:3px
+  class KPI kpi
+```
+
 | ID | Source | Real? | Retrieval mode | Completeness proof |
 |---|---|---|---|---|
 | R1 | Charging-session exports: Hugging Face [`shadenn/EV_Charging_demand`](https://huggingface.co/datasets/shadenn/EV_Charging_demand) (CC-BY-4.0), 13 monthly CSVs | Real | Files over HTTP | size + git-blob SHA-1 of every file vs the HF tree API (13/13) |
@@ -134,15 +262,24 @@ Full source map, gaps and diagram: [`docs/source_map.md`](docs/source_map.md). S
 
 ## 6. How the pipeline works
 ```mermaid
-flowchart LR
-  E["EXTRACT<br/>files · REST · SQL<br/>raw saved first"] --> G1{"GATE 1<br/>retrieval + schema"}
-  G1 --> C["CLEAN<br/>repairs counted<br/>no rows dropped"] --> G2{"GATE 2<br/>content"}
-  G2 --> T["TRANSFORM<br/>sites → chargers →<br/>attempts → visits"] --> G3{"GATE 3<br/>model integrity"}
-  G3 --> M["METRICS<br/>KPI · evidence ·<br/>sensitivity"] --> S["SAVE<br/>atomic partition swap"]
-  G1 -. any FAIL .-> X["exit 2<br/>nothing published"]
-  G2 -. any FAIL .-> X
-  G3 -. any FAIL .-> X
+flowchart TD
+  subgraph a["① Get inputs you can trust"]
+    direction LR
+    E["<b>EXTRACT</b><br/>files · REST · SQL<br/>raw saved first"] --> G1{{"<b>GATE 1</b> · 10 checks<br/>retrieval + schema<br/>FAIL → exit 2"}}
+    G1 --> C["<b>CLEAN</b><br/>repairs counted<br/>no row dropped"]
+    C --> G2{{"<b>GATE 2</b> · 14 checks<br/>content<br/>FAIL → exit 2"}}
+  end
+  subgraph b["② Model, measure, publish"]
+    direction LR
+    T["<b>TRANSFORM</b><br/>sites → chargers<br/>→ attempts → visits"] --> G3{{"<b>GATE 3</b> · 9 checks<br/>model integrity<br/>FAIL → exit 2"}}
+    G3 --> M["<b>METRICS</b><br/>KPI · evidence<br/>sensitivity"]
+    M --> S["<b>SAVE</b><br/>atomic swap<br/>exit 0"]
+  end
+  a --> b
+  classDef gate stroke:#3987e5,stroke-width:2px
+  class G1,G2,G3 gate
 ```
+
 | Stage | File | What it guarantees |
 |---|---|---|
 | Extract | `pipeline/extract.py` | Every source proven complete. Retries only on 429/5xx/timeouts and are bounded. Raw bytes are saved before parsing, and API keys never reach a log. |
@@ -155,35 +292,113 @@ flowchart LR
 **Exit codes:** `0` success · `2` a validation gate stopped the run (nothing published) · `1` retrieval or
 unexpected failure.
 
+**What "bounded retries" looks like.** The simulated status API fails on purpose on every run, so the retry logic is
+exercised every time, not just in tests:
+```mermaid
+sequenceDiagram
+  participant P as Pipeline
+  participant API as Status API (simulated)
+  P->>API: GET month=2024-01 page=3
+  API-->>P: 500 server error
+  Note over P: retryable → back off 1 s (at most 4 attempts)
+  P->>API: GET page=3 (retry)
+  API-->>P: 200 + 1,000 events
+  P->>API: GET page=5
+  API-->>P: 429 retry_after_seconds=1
+  Note over P: honour the server's wait (capped at 60 s)
+  P->>API: GET page=5 (retry)
+  API-->>P: 200 + 1,000 events
+  Note over P,API: a 4xx (e.g. 404) is never retried<br/>events received must equal total_records
+```
+
 ## 7. Run it
 **Needs:** Python 3.10+. After `pip install`, `--offline` needs no internet.
 ```bash
 git clone https://github.com/RatneshVaibhav/Voltra-Charging-Network.git && cd Voltra-Charging-Network
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-python run_pipeline.py --offline   # full flow from the committed source snapshot (~10 s)
-pytest -q                          # 30 tests
-python run_pipeline.py             # optional: same flow from the live sources (internet; DEMO_KEY is fine)
+python run_pipeline.py --offline
 ```
 To use your own AFDC key, run `cp config/.env.example .env` and set `AFDC_API_KEY`. Business rules are never read
 from `.env`.
 
-**What you should see** (abridged):
+**Every command, and what it does:**
+| Command | What it does | Exit code |
+|---|---|---|
+| `python run_pipeline.py --offline` | Runs the whole pipeline on the committed real snapshot: extract → 3 validation gates → model → metrics → publish. About 10 seconds. | 0 |
+| `python run_pipeline.py` | The same, downloading from the live sources (Hugging Face files and the AFDC API). Needs internet. | 0 |
+| `pytest -q` | Runs the 30 tests: cleaning, validation, retries, the model, the metrics and publishing. | 0 |
+| `python run_pipeline.py --offline --chaos <name>` | Runs one controlled failure (§8). Writes only under `chaos/<name>/`, never over the real result. | 0, 1 or 2 |
+| `grep -E "PASSED\|blank_port_id" logs/pipeline_2025-02-01.log` | Shows the three gate results and the judgement-call line from the last run (output in §4). | — |
+| `python -c "import json; print(json.dumps(json.load(open('data/processed/run_date=2025-02-01/metrics.json'))['judgement_call'], indent=2, ensure_ascii=False))"` | Prints the judgement-call block: what dropping the port-less attempts would do (output in §4). | — |
+| `python -m simulate.build_client_systems` | Rebuilds the simulated status feed and work orders, byte-identical. | 0 |
+| `python scripts/make_readme_charts.py` | Redraws the chart at the top of this page from `metrics.json`. | 0 |
+
+**What a run prints** — real output of `python run_pipeline.py --offline`, abridged. Lines starting with `#` are
+notes, `…` marks omitted lines, and timestamps are removed.
 ```text
 START | run_date=2025-02-01 offline=True chaos=none definitions=v1.3.1
-EXTRACT | source=R1 file=Se_01_2024.csv bytes=419545 size_ok=True sha1_ok=True        ← checksum proof, ×13
-EXTRACT | source=R2 stations=4593 total_results=4593                                   ← completeness proof
-EXTRACT | S1 2024-01 page=3 retryable status=500 attempt=1/4 wait=1.0s                 ← injected failure, retried
-EXTRACT | S1 2024-01 page=5 retryable status=429 attempt=1/4 wait=1.0s                 ← honours retry_after_seconds
+
+# 1 · Every source is proven complete
+EXTRACT | source=R1 file=Se_01_2024.csv bytes=419545 size_ok=True sha1_ok=True
+…         12 more monthly files, every one size_ok=True sha1_ok=True
+EXTRACT | source=R2 stations=4593 total_results=4593
+CLEAN | parsed rows=46575 glued_headers_repaired=39 repeated_headers_removed=39 malformed=0
+
+# 2 · The status API fails on purpose; the pipeline retries with a limit
+EXTRACT | S1 2024-01 page=3 retryable status=500 attempt=1/4 wait=1.0s
+EXTRACT | S1 2024-01 page=5 retryable status=429 attempt=1/4 wait=1.0s
+EXTRACT | source=S1 month=2024-01 pages=5 received=4432 total_records=4432
+…         12 more months, every one received == total_records
+EXTRACT | source=S2 rows=426 manifest_rows=426
+
+# 3 · Three validation gates; every accepted warning is printed
 VALIDATE | retrieval/schema gate PASSED | PASS=9 WARN=1
 VALIDATE | content gate PASSED | PASS=3 WARN=11
 VALIDATE | WARN sessions.blank_port_id n=2187 | blank port_id rows=2187; KEPT as unbound attempts (D2), never dropped
-TRANSFORM | sites=40 from address strings=43 (merged variants=3) … unresolved=0
-TRANSFORM | visits=29036 inferred outage windows=46 silent chargers=15 open at data end=2 [['S29', …]]
+…         10 more WARN lines, one per known and counted issue
+TRANSFORM | sites=40 from address strings=43 (merged variants=3) methods={'port_id': 86, 'name_match': 2} unresolved=0 …
+TRANSFORM | attempts=35996 unbound=2187 successful=28623
+TRANSFORM | visits=29036 inferred outage windows=46 silent chargers=15 open at data end=2 [['S29', '13664401'], ['S29', '13164881']]
 VALIDATE | model gate PASSED | PASS=5 UNKNOWN=1 WARN=3
+
+# 4 · Published in one atomic step
 SAVE | published partition=data/processed/run_date=2025-02-01 files=13 (atomic swap)
-PIPELINE SUCCESS   {"baseline_ftcs_pct": 86.03, "ftcs_13_month_pct": 83.87, … "validation": {"PASS": 17, "WARN": 15, "UNKNOWN": 1}}
+DONE | published=data/processed/run_date=2025-02-01 FTCS baseline=86.03% 13m=83.87% validation={'PASS': 17, 'WARN': 15, 'UNKNOWN': 1}
+
+PIPELINE SUCCESS
+…         then the KPI block as JSON, including:
+    "headline": "1 in 7 drivers fail on their first try (baseline quarter)",
+```
+And the tests:
+```text
+$ pytest -q
+..............................                                           [100%]
+30 passed in 0.40s
+```
+
+**How the main tables relate** (row counts for run 2025-02-01). Visits are built by grouping attempts, *before* any
+join, so no join can inflate the row count:
+```mermaid
+erDiagram
+  SITE ||--|{ CHARGER : "hosts"
+  CHARGER ||--o{ ATTEMPT : "records"
+  SITE ||--o{ VISIT : "receives"
+  VISIT ||--|{ ATTEMPT : "groups 1 or more"
+  SITE {
+    string site_id "S01..S40 (40 rows)"
+  }
+  CHARGER {
+    string charger_id "88 DC fast chargers"
+  }
+  ATTEMPT {
+    string session_id "35,996 rows, incl. 2,187 port-less"
+    bool is_success "energy >= 1 kWh"
+  }
+  VISIT {
+    string visit_id "29,036 rows"
+    bool first_attempt_success "the KPI numerator"
+  }
 ```
 
 **What it produces** in `data/processed/run_date=2025-02-01/`:
@@ -209,9 +424,33 @@ Logs go to `logs/pipeline_2025-02-01.log`. Raw inputs are kept in `data/raw/run_
 | `missing_column` | Upstream drops `energy_kwh` | **2** | `GATE \| pipeline stopped \| … missing=['energy_kwh'] \| no processed output published` |
 | `duplicate_rows` | Export duplicated 50 rows | **0** | `exact duplicate rows collapsed=50`; KPI unchanged |
 | `stale_data` | January export arrives late | **2** | `sessions.freshness … lag=32.00 days (allowed 2)` |
-| `api_outage` | Status API returns 503 on every call | **1** | 3 bounded retries, then `giving up` |
+| `api_outage` | Status API returns 503 on every call | **1** | 3 attempts (2 bounded retries), then `giving up` |
 | `bad_checksum` | One downloaded file is corrupted | **2** | `sha1_ok=False` → `retrieval.R1 … verified=12` |
 
+**What each demo prints** (real output, key lines, timestamps removed):
+```text
+$ python run_pipeline.py --offline --chaos missing_column        # the vendor drops a column
+CHAOS | missing_column: dropping energy_kwh to simulate an upstream schema change
+PIPELINE STOPPED AT VALIDATION GATE (exit 2): retrieval/schema gate: sessions.required_columns -> missing=['energy_kwh']
+
+$ python run_pipeline.py --offline --chaos duplicate_rows        # the export repeats 50 rows
+CLEAN | exact duplicate rows collapsed=50 (rule: attempt.exact_duplicate_rows)
+PIPELINE SUCCESS                                                 # KPI unchanged: 86.03%
+
+$ python run_pipeline.py --offline --chaos stale_data            # January's export is late
+CHAOS | stale_data: the latest monthly export (Se_01_2025.csv) has not arrived — withholding its 4475 rows
+PIPELINE STOPPED AT VALIDATION GATE (exit 2): content gate: sessions.freshness -> … lag=32.00 days (allowed 2)
+
+$ python run_pipeline.py --offline --chaos api_outage            # the status API is down
+EXTRACT | S1 2024-01 page=1 retryable status=503 attempt=1/3 wait=0.2s
+EXTRACT | S1 2024-01 page=1 retryable status=503 attempt=2/3 wait=0.4s
+EXTRACT | S1 2024-01 page=1 retryable status=503 attempt=3/3 giving up
+PIPELINE FAILED — retrieval (exit 1): S1 2024-01 page=1: status 503 after 3 attempts
+
+$ python run_pipeline.py --offline --chaos bad_checksum          # a downloaded file is corrupted
+EXTRACT | source=R1 file=Se_01_2024.csv bytes=419545 size_ok=True sha1_ok=False
+PIPELINE STOPPED AT VALIDATION GATE (exit 2): retrieval/schema gate: retrieval.R1 session exports -> … received/verified=12
+```
 Chaos runs write only under `data/*/chaos/<name>/` and `logs/*_chaos-<name>.*`. **A failure demo can never change
 the published result.** After all five, the real output is byte-identical.
 
@@ -270,6 +509,23 @@ failure label to learn from.
 
 ## 13. How it was built, phase by phase
 The commit history follows the assignment's phases. Each phase is one commit you can inspect (`git log --reverse`).
+```mermaid
+gitGraph
+  commit id: "Phase 1 · framing"
+  commit id: "Review · verify numbers"
+  commit id: "Phase 2 · sources"
+  commit id: "Phase 3 · retrieval"
+  commit id: "Phase 4 · validation"
+  commit id: "Phase 5 · model"
+  commit id: "Phase 6 · pipeline"
+  commit id: "Phase 7 · evidence"
+  commit id: "Review · 19 findings"
+  commit id: "Fix · validation"
+  commit id: "Fix · metrics"
+  commit id: "Fix · dependability"
+  commit id: "Docs"
+```
+
 | Phase | Class | What it added |
 |---|---|---|
 | 1 | — | Problem framing, decisions D1–D5, KPI definition v1.0, research, reviewer tooling |
@@ -292,11 +548,14 @@ data/simulated_client_systems/  S1 events, S2 SQLite, client_brief.json (all lab
 simulate/                  S1/S2 generator, mock status API, SIMULATION_SPEC.md
 docs/                      source map · validation contract · data model · Gate 2 · evidence · demo script · decisions · research
 tests/                     pytest suite (30 tests)
+scripts/                   make_readme_charts.py (draws the chart at the top from metrics.json) · refresh_source_snapshot.py
+docs/img/                  the generated headline chart, light and dark versions
 reviews/                   independent review reports and the finding → fix map
 CLAUDE.md, AGENTS.md, .claude/, docs/agent/   context and review tooling for coding agents
 ```
 The simulated systems are committed. To rebuild them deterministically (byte-identical):
-`python -m simulate.build_client_systems`.
+`python -m simulate.build_client_systems`. To redraw the headline chart after a run:
+`python scripts/make_readme_charts.py`. The diagrams are mermaid, written in this file, and GitHub renders them.
 
 ## 15. Data provenance and honesty notes
 - R1 is a public third-party excerpt (CC-BY-4.0) of ChargePoint session data from Tennessee and neighbouring states.

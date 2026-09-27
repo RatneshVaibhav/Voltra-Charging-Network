@@ -1,85 +1,76 @@
-# Demo script (about 4½ minutes) — one FDE judgement call, shown on the GitHub repo
+# Demo script (about 4 minutes) — shown entirely from the README on GitHub
 
 **The judgement call:** 2,187 charging attempts with no port id were **kept as failed attempts** instead of being
 dropped as "bad rows". Dropping them would have shown the client 90.33% — their stretch target — with no repair at all.
 
-## Before you record (5 minutes)
-1. Terminal: `cd Voltra-Charging-Network && source .venv/bin/activate`, run `python run_pipeline.py --offline` once
-   (so the outputs exist), then `clear`. Make the font large (≥ 16 pt). If `python` is not found, use `python3`.
-2. Browser tabs, in this order:
-   - (a) the repo's README on GitHub, scrolled to the top
-   - (b) `docs/decisions_log.md`, jumped to **D2**
-   - (c) `docs/evidence.md`
-3. Keep this script on a second screen. Speak slowly: ~600 words is about 4½ minutes.
+No terminal is needed: every command, and its real output, is printed in the README (§4, §7, §8).
+
+## Before you record
+1. Open the repo's front page on GitHub (the README). Zoom the browser to 110–125%.
+2. Scroll slowly to the bottom once, so every diagram has rendered, then press **Home** to return to the top.
+3. **How to move around:** the **Contents:** line of links sits just under the small *How to read this repo* table
+   near the top. Press **Home**, then click a Contents link to jump to a section. Scroll down with the mouse wheel.
+4. Loom: Screen + Camera, full screen, notifications off. Keep this script on a second screen.
 
 ---
 
-## 0:00 – 0:25 · The problem
-**Screen:** tab (a), README top: the headline and the "At a glance" table.
+## Scene 1 · 0:00–0:25 · The chart
+**SHOW:** The top of the README: the bar chart titled *Same fleet, four ways of measuring reliability*. Rest the
+mouse on the three **grey** bars, then on the **blue** bar.
+> "Hi, I'm [your name]. This is my FDE data-foundations project for a fictional client, Voltra Charging Network,
+> built on real public charging data. This chart is the whole story. The operator's dashboard says 99.8% uptime.
+> The blue bar is what drivers experience: only 86% get a charge on their first try. One in seven drivers fail."
 
-> "Voltra's operator dashboard says its fast chargers have 99% uptime. Drivers say the chargers don't work. I built a
-> pipeline on 46,575 real charging sessions to measure what drivers actually experience. The answer: first-time charge
-> success is 86% — one in seven drivers fail on their first try."
+## Scene 2 · 0:25–0:50 · The whole project in one picture
+**SHOW:** Scroll down to the heading **The whole project in one picture**. Move the mouse down the diagram, box by box.
+> "Here's the project in one picture. Four sources: the two solid boxes are real — charging sessions and the
+> government station registry. The two dashed boxes are simulated, and never touch the KPI. One command runs the
+> pipeline, through three validation gates, down to the KPI and three actions."
 
-## 0:25 – 1:00 · Where the truth lives
-**Screen:** scroll to README §5, *Data sources and where the truth lives*.
+## Scene 3 · 0:50–1:45 · The judgement call
+**SHOW:** Press **Home**, then click **4 Judgement call** in the Contents line. Under the bold line **The call in one
+picture:**, point at the diagram from top to bottom: the top box · the four small check boxes · the middle box · the
+two boxes marked ❌ (red outline) · the box marked ✅ (green outline) · the two boxes at the bottom.
+> "Here's the call. 2,187 rows, about 5% of the data, have no port id. The reflex is: bad key, drop the row. First I
+> checked them. Every one is on a fast charger, 99.9% delivered zero energy, the median lasted two minutes, and the
+> charger is still known. So they're not corrupt rows — they're failed charging attempts. Drop them, and first-time
+> success reads 90.33%: the client's stretch target, met on paper without fixing a single charger. So I kept them.
+> And that became a finding: a third of failures never reach any uptime record, and the fix is asking the vendor to
+> record the port and an error code on every attempt."
 
-> "Four sources. Two are real: the session exports and the US Department of Energy station registry. Two are simulated
-> stand-ins for systems no operator publishes, and they are labelled and never touch the KPI. For 'did the driver get a
-> charge?', the system of record is the metered energy on each session. It can't be the status feed, because a failed
-> attempt simply returns the charger to 'Available'. That's exactly why the uptime number looks so good."
+## Scene 4 · 1:45–2:10 · The proof, printed on every run
+**SHOW:** Scroll down past the two tables to the bold line **What the pipeline writes about it on every run**. Point
+at `"ftcs_baseline_if_dropped_pct": 90.33` and `"dropping_would_appear_to_meet_stretch_target": true`. Then scroll a
+little to **And what it prints on every run** and point at the line with `WARN sessions.blank_port_id n=2187`.
+> "This isn't a number I typed into a slide — the pipeline recomputes it on every run, and prints the decision: 2,187
+> kept, never dropped. It's also logged in the decisions log with every option I rejected, including my own first
+> mistake."
 
-## 1:00 – 2:30 · The judgement call ← the heart of the demo
-**Screen:** README §4. Point at the first table, row by row.
+## Scene 5 · 2:10–2:40 · What a run looks like
+**SHOW:** Keep scrolling down to the heading **6. How the pipeline works** and pause on its diagram. Keep scrolling to
+**7. Run it**: show the table under **Every command, and what it does:**, then the block under **What a run prints**.
+Point at the `sha1_ok=True` line, the `status=500` and `status=429` lines, and the three lines ending in `PASSED`.
+> "One command runs everything, and here's what it prints. Every file is checked against the publisher's checksum.
+> The status API fails on purpose, and the pipeline retries with a limit. Then three validation gates, each
+> reporting what passed and what it accepted as a known warning."
 
-> "Here is the call I want to walk you through. 2,187 rows — about 5% — have no port id. Every cleaning checklist says a
-> row with a missing key is a bad row: drop it. Before touching them I checked four things. Every one is on a DC fast
-> charger. 99.9% delivered exactly zero energy. The median one lasted two minutes. And the charger id is still there,
-> so I know where it happened. These aren't corrupt rows — they are failed charging attempts that died before the
-> charger recorded a port."
+## Scene 6 · 2:40–3:05 · It fails safely
+**SHOW:** Scroll down to **8. Show me it fails safely**. Point at the table, then under the bold line **What each demo
+prints**, point at the `missing_column` example's line `PIPELINE STOPPED AT VALIDATION GATE (exit 2)`.
+> "And when something breaks, it stops. If the vendor drops the energy column, the gate stops the run and publishes
+> nothing. Late data, a corrupted file or an API outage stop it the same way."
 
-**Screen:** the second table in §4.
+## Scene 7 · 3:05–3:40 · The decision it supports
+**SHOW:** Press **Home**, then click **2 Decision** in the Contents line. Point at items **1**, **2** and **3** of the
+numbered list.
+> "So what does the client do on Monday? Send crews to five sites more than five points below the median — that gets
+> the network to 87%, the six-week target. Check S29, where two chargers have been silent since January — invisible
+> to the KPI. And ask the vendor to record the port and an error code on every attempt."
 
-> "So what would dropping them do? First-time success would jump from 86.03% to 90.33%. That is the client's stretch
-> target — reached on paper, with no repair at all. And 30% of all failures would simply disappear. I kept them, as
-> failed attempts at their charger's site, and I label them 'unbound'."
-
-**Screen:** switch to tab (b), D2 in the decisions log. Scroll slowly past the options table.
-
-> "The decision is logged with every option I rejected, including my own first mistake: I initially excluded these
-> rows as 'not fast chargers', which was wrong. That correction is kept visible as C2. The impact isn't a number I
-> typed. The pipeline recomputes it on every run, so anyone can check it."
-
-## 2:30 – 3:30 · Run it
-**Screen:** terminal. Type `python run_pipeline.py --offline`.
-
-> "One command runs everything: extract, three validation gates, transform, metrics, and an atomic save."
-
-While it runs (about 10 seconds), point at each line as it appears:
-- `sha1_ok=True` → "Every file is checked against the publisher's checksum, so I can prove retrieval is complete."
-- `status=500 … wait` and `status=429 … wait` → "The status API fails on purpose. The pipeline retries, with a limit."
-- `WARN sessions.blank_port_id n=2187 … KEPT as unbound attempts` → "And here is the judgement call, printed on every
-  run: counted, logged, never silently dropped."
-- `PIPELINE SUCCESS` → "86.03%, and 33 checks: 17 pass, 15 known warnings, 1 unknown — nobody owns the KPI yet."
-
-Then type `python run_pipeline.py --offline --chaos missing_column`.
-
-> "Now I remove the energy column, as if the vendor changed the export. The gate stops the run with exit code 2, and
-> nothing is published. Demo runs write to their own folder, so they can never overwrite the real result."
-
-## 3:30 – 4:15 · Evidence and the decision
-**Screen:** tab (c), `docs/evidence.md`. Show the judgement-call table, then scroll to *Where to send crews first*.
-
-> "The output supports one decision: where to send crews now. Five sites sit more than five points below the median.
-> Lifting them to the median gets the network to 87%, the six-week target. One more site, S29, has two chargers that
-> have been silent since early January. The KPI can't see that, so it's flagged for a check."
-
-## 4:15 – 4:40 · Close
-**Screen:** scroll to *Known / Unknown / Assumption / Limitation*.
-
-> "What this data cannot tell us is *why* anything failed — no session carries an error code. So the real
-> recommendation is to make the charging software record the port and an error code on every attempt. Then 90% becomes
-> a target you can manage, not a number you can reach by deleting rows. Thank you."
+## Scene 8 · 3:40–4:00 · Close
+**SHOW:** Press **Home** and finish on the chart.
+> "Record that, and 90% becomes a target you can manage — not a number you can reach by deleting rows. That was the
+> judgement call: make the number true, not the data look clean. Thanks for watching."
 
 ---
 

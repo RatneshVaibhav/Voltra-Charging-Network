@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="304" viewBox="0 0 760 304" font-family="system-ui, -apple-system, Segoe UI, sans-serif" role="img" aria-label="Same fleet, four ways of measuring reliability">
+<rect width="760" height="304" rx="8" fill="#fcfcfb"/>
+<text x="16" y="38" font-size="17" font-weight="600" fill="#0b0b0b">Same fleet, four ways of measuring reliability</text>
+<text x="16" y="60" font-size="13" fill="#52514e">The dashboard's view is near-perfect; the drivers' view is not. Percent, axis from 0.</text>
+<line x1="266.0" y1="72" x2="266.0" y2="264" stroke="#c3c2b7" stroke-width="1"/>
+<text x="266.0" y="282" font-size="12" fill="#52514e" text-anchor="middle">0</text>
+<line x1="372.0" y1="72" x2="372.0" y2="264" stroke="#e1e0d9" stroke-width="1"/>
+<text x="372.0" y="282" font-size="12" fill="#52514e" text-anchor="middle">25</text>
+<line x1="478.0" y1="72" x2="478.0" y2="264" stroke="#e1e0d9" stroke-width="1"/>
+<text x="478.0" y="282" font-size="12" fill="#52514e" text-anchor="middle">50</text>
+<line x1="584.0" y1="72" x2="584.0" y2="264" stroke="#e1e0d9" stroke-width="1"/>
+<text x="584.0" y="282" font-size="12" fill="#52514e" text-anchor="middle">75</text>
+<line x1="690.0" y1="72" x2="690.0" y2="264" stroke="#e1e0d9" stroke-width="1"/>
+<text x="690.0" y="282" font-size="12" fill="#52514e" text-anchor="middle">100</text>
+<text x="254" y="98.0" font-size="13" font-weight="400" fill="#0b0b0b" text-anchor="end">Operator uptime</text>
+<text x="254" y="114.0" font-size="11.5" fill="#52514e" text-anchor="end">simulated status feed</text>
+<path d="M266.0,89.0 H685.0 Q689.0,89.0 689.0,93.0 V105.0 Q689.0,109.0 685.0,109.0 H266.0 Z" fill="#898781"/>
+<text x="697.0" y="104.0" font-size="13" font-weight="400" fill="#0b0b0b">99.77%</text>
+<text x="254" y="144.0" font-size="13" font-weight="400" fill="#0b0b0b" text-anchor="end">Federal-style uptime</text>
+<text x="254" y="160.0" font-size="11.5" fill="#52514e" text-anchor="end">simulated status feed</text>
+<path d="M266.0,135.0 H678.3 Q682.3,135.0 682.3,139.0 V151.0 Q682.3,155.0 678.3,155.0 H266.0 Z" fill="#898781"/>
+<text x="690.3" y="150.0" font-size="13" font-weight="400" fill="#0b0b0b">98.18%</text>
+<text x="254" y="190.0" font-size="13" font-weight="400" fill="#0b0b0b" text-anchor="end">Charger availability</text>
+<text x="254" y="206.0" font-size="11.5" fill="#52514e" text-anchor="end">inferred from real sessions</text>
+<path d="M266.0,181.0 H673.5 Q677.5,181.0 677.5,185.0 V197.0 Q677.5,201.0 673.5,201.0 H266.0 Z" fill="#898781"/>
+<text x="685.5" y="196.0" font-size="13" font-weight="400" fill="#0b0b0b">97.05%</text>
+<text x="254" y="236.0" font-size="13" font-weight="600" fill="#0b0b0b" text-anchor="end">Drivers' first-try success</text>
+<text x="254" y="252.0" font-size="11.5" fill="#52514e" text-anchor="end">the KPI · real sessions</text>
+<path d="M266.0,227.0 H626.8 Q630.8,227.0 630.8,231.0 V243.0 Q630.8,247.0 626.8,247.0 H266.0 Z" fill="#2a78d6"/>
+<text x="638.8" y="242.0" font-size="13" font-weight="600" fill="#0b0b0b">86.03%</text>
+</svg>

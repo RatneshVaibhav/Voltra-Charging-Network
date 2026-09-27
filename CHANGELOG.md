@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## README made glanceable (2026-09-27)
+- Headline chart at the top: the same fleet measured four ways, drawn from `metrics.json` by
+  `scripts/make_readme_charts.py` (light and dark SVGs in `docs/img/`, each on its own background)
+- "The whole project in one picture" diagram, a reading guide (1 minute → 1 hour), and mermaid diagrams for the driver
+  journey, the visit rule, the judgement call, the sources, the pipeline gates, bounded retries, the data model and
+  the build history (9 diagrams, each rendered and checked with mermaid-cli before committing)
+
 ## Independent review resolved — definitions v1.3.1 (2026-09-27)
 Every finding of `reviews/full-review-2026-09-27.md` is resolved; the map is `reviews/review-fixes-2026-09-27.md`.
 KPI and every regression count are unchanged (FTCS 86.03% / 83.87%).

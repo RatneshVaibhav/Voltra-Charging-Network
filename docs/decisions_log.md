@@ -26,6 +26,10 @@ index 93.8%, laggard states ~78%. Our data: FTCS 83.8% (13 months), 86.0% (recen
 median, **and** close the diagnostic gap (every failed attempt carries a port and a cause) so a ≥ 90% target can be set
 credibly next quarter. The original "≥ 89% by repairing the 5 worst ports" target was withdrawn (C4).
 
+**Amendment 2026-09-27 (after independent review).** Headline changed from "1 in 6" to **"1 in 7"**: the headline
+must use the same period as the baseline and target (baseline-quarter FTCS 86.03% ⇒ 14.0% ≈ 1 in 7). The 13-month
+figure (83.87%) stays as context. Supporting attempt-grain evidence is labelled as such ("1 in 5 attempts").
+
 **Consequences.** The "99% uptime" is the *client's claim* to be tested (FlashEats "56%" pattern), not our finding.
 All numbers depend on D2/D3 definitions. 6-week window kept for continuity with Assignment 1.
 
@@ -40,10 +44,10 @@ as failed attempts attributed to their charger's site. FTCS at `> 0 kWh` is alwa
 **Options considered.**
 | Threshold | Source | FTCS (13 mo) |
 |---|---|---|
-| > 0 kWh | EV-ChART: unsuccessful session = no energy dispensed (energy reported as "none") | 84.7% |
+| > 0 kWh | EV-ChART: unsuccessful session = no energy dispensed (energy reported as "none") | 84.8% |
 | ≥ 0.1 kWh | kwwhat (open-source OCPP analytics): meaningful transfer > 0.1 kWh | 84.4% |
 | ≥ 0.5 kWh | Initial ad-hoc choice (no source) | — (superseded) |
-| **≥ 1.0 kWh** | **UC Davis, Gamage et al. 2024 (peer-reviewed, TRR): events > 1 kWh are successful; 1 kWh ≈ 3–4 miles** | **83.8%** |
+| **≥ 1.0 kWh** | **UC Davis, Gamage et al. 2024 (peer-reviewed, TRR): events > 1 kWh are successful; 1 kWh ≈ 3–4 miles** | **83.9%** |
 
 **Evidence.** DC energy distribution is bimodal: 6,899 attempts at exactly 0 kWh; only 474 in (0, 1); 27,777 above 5 kWh.
 93.6% of sub-1 kWh attempts are exactly zero → every threshold option lands within 0.9 pts.
@@ -69,10 +73,11 @@ chain port_id→AFDC posts, else name match, else unresolved. Visit succeeds if 
 **Options considered.**
 | Rule | Source | FTCS | Failed visits |
 |---|---|---|---|
-| Same port, 2 min | kwwhat rule for unauthenticated drivers | 83.2% | 7.6% |
-| **Same site, 5 min** | **UC Davis (validated with user IDs); our gap analysis** | **83.8%** | **5.9%** |
-| Same site, 10 min | — | 84.0% | 5.3% |
-| Same site, 15 min | Initial ad-hoc choice | 84.1% | 5.0% |
+| Same port, 2 min | kwwhat rule for unauthenticated drivers | 82.4% | 11.3% |
+| Same site, 2 min | — | 83.2% | 7.5% |
+| **Same site, 5 min** | **UC Davis (validated with user IDs); our gap analysis** | **83.9%** | **5.8%** |
+| Same site, 10 min | — | 84.1% | 5.1% |
+| Same site, 15 min | Initial ad-hoc choice | 84.1% | 4.9% |
 
 **Evidence.** Fail-vs-success gap ratio (gap to the next attempt at the same site, after a failed vs a successful
 attempt): 13.8× in (0,1] min, 5.3× (1,2], 2.1× (2,3], 1.3× (3,5], **0.6× (5,7.5]**, 0.4× (7.5,10], ≤0.2× beyond.
@@ -83,7 +88,13 @@ splits real retries into fake failed visits.
 **Rationale.** Empirically supported on our own data *and* in peer-reviewed work; site-level captures port switching.
 We have no driver IDs, so this is the UC Davis "Variation 2" approximation.
 
-**Consequences.** FTCS robust (83.2–84.1% across rules); *failed-visit rate* is definition-sensitive (5.0–7.6%) → always
+**Amendment 2026-09-27.** (1) The 2-minute row was mislabelled: 83.2% / 7.6% was *site*-level; true port-level is
+82.4% / 11.3% (C8). (2) Ordering and gap are now fully specified: sort by (site, start, end, session_id); the gap is
+measured to the **previous row's** end at the same site (a visit-max-end rule would wrongly split retries made while
+another driver was still charging). (3) Tested refinement "a successful attempt closes the visit" moved FTCS by only
+0.1 pt, so the rule stands. Figures below use the corrected 40 sites (D7).
+
+**Consequences.** FTCS robust (82.4–84.8% across rules); *failed-visit rate* is definition-sensitive (4.9–11.3%) → always
 report its sensitivity. Two different drivers arriving within 5 min at a busy site can be merged (known limitation).
 
 ---
@@ -132,6 +143,29 @@ public utilities would overclaim.
 
 ---
 
+## D6 — Run date, freshness and baseline
+**Date:** 2026-09-27 · **Status:** Locked
+
+**Decision.** The pipeline processes a *reporting month* = the month before the logical `--run-date` (default
+2025-02-01). **Freshness** PASSES if the latest session starts within **2 days** of the reporting month's end (the
+known one-day export gap needs ~1 day of tolerance); otherwise FAIL. Age versus today is a WARN ("historical backfill"),
+never a FAIL. The **baseline** is the last three monthly exports in the data, anchored to the end of the data, not the
+run date.
+
+**Why.** The data is a historical export (ends Jan 2025). Judging freshness against the wall clock would fail every run
+and teach nothing; judging it against the logical date keeps the check meaningful and demonstrable (`--chaos stale_data`).
+
+## D7 — Physical sites by distance, not address text
+**Date:** 2026-09-27 · **Status:** Locked
+
+**Decision.** Chargers whose registry coordinates are within **150 m** (single linkage) form one site.
+
+**Evidence.** Address text split three real sites into six ("10772 US-51" vs "10772 U.S. 51", "114 SW ATLANTIC ST" vs
+"… ST.", "110 COLLEGE ST W" vs "… STREET WEST"). Within-site distances are ≤ 33 m; the nearest separate site is 17 km
+away, so any threshold between those gives the same **40 sites** (not 43).
+
+---
+
 ## Corrections log (self-corrections made during research — kept visible on purpose)
 
 | ID | What was wrong | How it was caught | Effect |
@@ -142,3 +176,7 @@ public utilities would overclaim.
 | C4 | Claim "9 ports cause 52% of failures" and "fix 5 worst ports → 89%" | Artefact of C1/C2; with correct population, worst 10 chargers only lift FTCS 83.8% → 85.1%; failures are fleet-wide | Concentration claim and 89% target withdrawn; target amended (D1) |
 | C5 | 15-min visit window chosen ad hoc | Fail-vs-success gap analysis + UC Davis evidence | Window set to 5 min (D3) |
 | C6 | Registry "Available" status cited as evidence for 2024 | Registry is a 2026 snapshot | Removed from problem statement; recorded as temporal limitation |
+| C7 | Sites keyed on address text → same site counted twice when spelled differently | Independent review asked how addresses are normalised; checking found 3 spelling variants | 43 → 40 sites; distance clustering (D7); FTCS 83.8% → 83.9% |
+| C8 | D3 table labelled a site-level 2-min result as port-level | Independent review | Relabelled; port-level 2-min is 82.4% / 11.3% |
+| C9 | Headline "1 in 6" used the 13-month figure while the baseline is the recent quarter | Independent review | Headline "1 in 7" (D1 amendment) |
+| C10 | Each monthly export is missing its last calendar day (UTC) | Day-coverage check while defining "complete month" | WARN check + limitation + re-export request |

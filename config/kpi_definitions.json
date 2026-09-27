@@ -1,39 +1,89 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "approved_on": "2026-09-27",
-  "approved_in": "docs/decisions_log.md (D2, D3)",
-  "change_policy": "Business definitions. Do not override via environment variables. Changing any value requires a new dated entry in docs/decisions_log.md and a version bump.",
+  "approved_in": "docs/decisions_log.md (D1-D6)",
+  "change_policy": "Business definitions. Never overridden by environment variables. Any change needs a dated entry in docs/decisions_log.md and a version bump.",
+
   "dc_charger": {
-    "rule": "charger_id has >=1 identified port whose max peak_power_kw across the data exceeds the threshold",
+    "rule": "charger_id has >=1 identified (non-blank) port whose max peak_power_kw across all sessions exceeds the threshold",
     "peak_power_threshold_kw": 20
   },
+
   "attempt": {
-    "failed_if_energy_kwh_below": 1.0,
-    "sensitivity_thresholds_kwh": [0.0001, 0.1],
+    "success_rule": {"field": "energy_kwh", "operator": ">=", "value": 1.0},
     "unbound_attempts": {
       "definition": "blank port_id on a DC charger",
-      "treatment": "keep_as_attempt_attributed_to_charger_site",
+      "treatment": "keep as an attempt; attribute to the charger's site",
       "port_key_template": "UNBOUND@{charger_id}"
-    }
+    },
+    "exact_duplicate_rows": "an exact duplicate row (all columns identical) is export duplication: keep one, count and log",
+    "conflicting_duplicates": "same session_id with different values is a FAIL (cannot choose silently)"
   },
+
   "site_resolution": {
-    "chain": ["port_id_to_afdc_posts", "evse_name_fuzzy_match_to_afdc_station_name", "unresolved"],
-    "site_key": "normalised upper(street_address) + '|' + upper(city) of the matched AFDC record",
-    "fuzzy_match_cutoff": 0.85
+    "step_1": "charger -> AFDC record where any of the charger's non-blank port_id values is in ev_network_ids.posts",
+    "step_2": "else fuzzy match of normalised evse_name (text with '/' replaced by a space) against normalised AFDC station_name using difflib, best match with ratio >= cutoff",
+    "normalisation": "uppercase; keep A-Z, 0-9 and spaces; collapse repeated spaces; strip",
+    "fuzzy_match_cutoff": 0.85,
+    "step_3": "else unresolved -> validation FAIL (every DC charger must have a site)",
+    "clustering": "chargers whose matched AFDC coordinates are within max_distance_m of each other (single-linkage) form one physical site",
+    "max_distance_m": 150,
+    "why_distance_not_address": "the registry spells some addresses differently for the same site (e.g. 'US-51' vs 'U.S. 51'); within-site distances are <= 33 m and the nearest separate site is 17 km away",
+    "site_id": "S01..Snn assigned in order of the site's most common normalised address"
   },
+
   "visit": {
-    "grouping_key": "site",
-    "max_gap_minutes": 5,
+    "grouping_key": "site_id",
+    "sort_order": ["site_id", "session_start", "session_end", "session_id"],
+    "gap_definition": "session_start minus the session_end of the previous row in sort order at the same site",
     "min_gap_minutes": -2,
-    "gap_definition": "session_start - previous session_end at the same site",
-    "sensitivity_max_gap_minutes": [2, 10],
-    "visit_success_rule": "any_attempt_successful"
+    "max_gap_minutes": 5,
+    "visit_success_rule": "any attempt in the visit is successful"
   },
+
+  "sensitivity": [
+    {"name": "success > 0 kWh", "success_rule": {"field": "energy_kwh", "operator": ">", "value": 0}, "grouping_key": "site_id", "max_gap_minutes": 5},
+    {"name": "success >= 0.1 kWh", "success_rule": {"field": "energy_kwh", "operator": ">=", "value": 0.1}, "grouping_key": "site_id", "max_gap_minutes": 5},
+    {"name": "site window 2 min", "grouping_key": "site_id", "max_gap_minutes": 2},
+    {"name": "site window 10 min", "grouping_key": "site_id", "max_gap_minutes": 10},
+    {"name": "site window 15 min", "grouping_key": "site_id", "max_gap_minutes": 15},
+    {"name": "port window 2 min (rejected alternative)", "grouping_key": "port_key", "max_gap_minutes": 2}
+  ],
+
   "kpi": {
     "name": "First-Time Charge Success rate (FTCS)",
     "formula": "visits whose first attempt succeeded / all visits",
     "grain": "visit",
-    "baseline_rule": "most recent 3 complete months",
-    "target": {"from": 0.860, "to": 0.87, "horizon_weeks": 6, "stretch_next_quarter": 0.90}
+    "baseline_rule": "the three most recent monthly exports present in the data, anchored to the end of the data (not the run date)",
+    "target": {"from_baseline": true, "to": 0.87, "horizon_weeks": 6, "stretch_next_quarter": 0.90}
+  },
+
+  "lagging_sites": {
+    "window": "baseline quarter",
+    "min_visits": 50,
+    "rule": "site FTCS is strictly more than 5.0 percentage points below the median site FTCS, compared on unrounded values",
+    "points_below_median": 5.0
+  },
+
+  "freshness": {
+    "reporting_month": "the calendar month before the logical run date",
+    "rule": "latest session_start must be within max_lag_days of the end of the reporting month (FAIL otherwise)",
+    "max_lag_days": 2,
+    "why_2_days": "every monthly export is missing its final calendar day (UTC), so up to ~1 day of lag is expected",
+    "wall_clock_age": "age versus today's date is reported as WARN ('historical backfill'), never FAIL"
+  },
+
+  "completeness": {
+    "month_day_coverage_warn_below": 1.0,
+    "month_day_coverage_fail_below": 0.9
+  },
+
+  "outage_inference": {
+    "scope": "sites with >= 2 DC chargers",
+    "rule": "for a charger with share p (>= min_share) of the site's successful sessions, a run of k consecutive successful site sessions on other chargers is an inferred outage when (1-p)^k < probability_threshold",
+    "min_share": 0.1,
+    "probability_threshold": 0.001,
+    "bounded_by": "charger commissioned life (first to last session)",
+    "silent_charger": {"min_inferred_availability": 0.99, "max_first_attempt_success": 0.80}
   }
 }

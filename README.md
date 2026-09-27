@@ -306,6 +306,4 @@ The simulated systems are committed. To rebuild them deterministically (byte-ide
   every metric that uses them is labelled *illustrative*.
 - The data ends January 2025 (a historical backfill), and every monthly export is missing its last day (13 of 397
   days). Freshness is judged against the logical run date, and wall-clock age is reported as a warning.
-- AI assistance: this project was built with Claude Code as a pair engineer. The agent context and review tooling are
-  committed (`CLAUDE.md`, `.claude/`, `reviews/`). Every number was re-derived by independent review, and every
-  decision is owned and logged.
+- AI assistance: research, design decisions and the initial build were done with Claude (claude.ai); independent review and hardening were done with Claude Code. The agent context and review tooling are committed (`CLAUDE.md`, `.claude/`, `reviews/`). Every decision is owned by the author and logged in `docs/decisions_log.md`.

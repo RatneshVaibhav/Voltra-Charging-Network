@@ -24,7 +24,7 @@ before a later correction are kept visible and marked *(superseded …)* — the
 ## D1 — Problem statement and headline
 **Date:** 2026-09-27 · **Status:** Locked (amended same day after D2/D3 evidence — see C3, C4)
 
-**Decision.** Headline: *"Our fast chargers report 99% uptime — so why do 1 in 6 drivers fail on their first try?"*
+**Decision.** Headline: *"Our fast chargers report 99% uptime — so why do 1 in 6 drivers fail on their first try?"* *(amended to "1 in 7" — see the amendment below)*
 *(superseded the same day by the amendment below: **1 in 7**, baseline quarter)*
 Business problem stated at **driver-visit grain** with a recent-quarter baseline.
 

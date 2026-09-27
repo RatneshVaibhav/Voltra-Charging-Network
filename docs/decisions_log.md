@@ -97,6 +97,12 @@ another driver was still charging). (3) Tested refinement "a successful attempt 
 **Consequences.** FTCS robust (82.4–84.8% across rules); *failed-visit rate* is definition-sensitive (4.9–11.3%) → always
 report its sensitivity. Two different drivers arriving within 5 min at a busy site can be merged (known limitation).
 
+**Amendment 2026-09-27 (D9).** The "switch port" figure above (42.3%; 43.5% after D7) is the share of multi-attempt visits
+whose attempts span more than one port key — exactly the visits port-level grouping would cut in two, so it remains the
+reason port-level grouping is rejected. It is *not* the share of drivers who moved: every DC charger exposes one port id,
+and a port-less `UNBOUND@C` attempt followed by charger C is the same place. **27.2% of retry visits move to another
+charger.**
+
 ---
 
 ## D4 — Simulated client systems
@@ -192,6 +198,35 @@ printed no gate lines at all.
 **Consequences.** No KPI number changes (86.03% / 83.87%). Validation summary 16/13/1 → 17/14/1. A future export with a
 changed layout or missing energy stops the run with exit 2 and a message naming the file and column.
 
+
+## D9 — Measurement corrections after independent review (definitions v1.3.0)
+**Date:** 2026-09-27 · **Status:** Locked
+
+**Decision.**
+1. **Driver switching is measured by charger, among real retries.** Retry visit = first attempt failed and ≥ 2 attempts;
+   a switch = the attempts span ≥ 2 chargers → **27.2%** of retry visits (previously reported as "43.5% switch port").
+2. **The rejected D2 alternative is computed on every run**, not quoted from exploration: sensitivity row
+   *drop port-less attempts (rejected, D2)* and `metrics.json → judgement_call`. Dropping would make FTCS read
+   **90.33%** in the baseline quarter (+4.30 pts) and 88.92% over 13 months (+5.05).
+3. **Inferred outages still open when the data ends are listed, never counted:** 2 chargers at S29 had no session at all
+   for ~25 days at the end of January while their site-mates logged 74 and 77 successes.
+4. **"Repair effect" is relabelled** as charger first-attempt success before → after a corrective work order, with the
+   caveat that there is no control group.
+
+**Options considered.**
+| Question | Options | Chosen | Why |
+|---|---|---|---|
+| How often do retrying drivers move? | distinct port keys over all multi-attempt visits (old, 43.5%) · distinct identified ports · **distinct chargers over retry visits** | **distinct chargers, retry visits (27.2%)** | Every DC charger exposes exactly one port id (88/88), so port = charger; `UNBOUND@C → C` is the same place; 23.9% of multi-attempt visits succeeded first time, so they are not retries. 43.5% still answers a different question (how many visits port-level grouping would split) and stays as D3's rationale. |
+| How to present the judgement call | quote "~4 pts" (old) · **compute every run** | **compute** | A number no code produces cannot be checked by a grader or protected by a test. |
+| A run still open at the data end | ignore (old) · count as downtime up to the data end · **list for verification** | **list, WARN** | Counting would lower availability for what may be a decommissioning; ignoring hides the freshest operational signal in the reporting month. A site visit settles it cheaply. |
+| Repair-effect label | "median FTCS before → after" (old) · **charger first-attempt success + caveat** · drop the metric | **relabel** | FTCS is a visit-grain network KPI; this is a charger-level measure. With simulated timing and no control group it is illustrative only. |
+
+**Evidence.** Review F3 (charger switch 32.9% of multi-attempt visits, 27.2% of retry visits; port-key switch 43.5%),
+F12, F5 (chargers 13664401 and 13164881: last success 5–6 Jan 2025; 74 / 77 site successes since, 31 / 45 needed), F14.
+
+**Consequences.** No KPI number changes. The crew decision gains one verification item (S29). Validation summary
+17/14/1 → 17/15/1 (33 checks). The judgement call now has its own block in `metrics.json` that the demo can show.
+
 ---
 
 ## Corrections log (self-corrections made during research — kept visible on purpose)
@@ -211,3 +246,7 @@ changed layout or missing energy stops the run with exit 2 and a message naming 
 | C11 | Later files' header rows were counted but never compared with the first — a reordered export would be parsed into the wrong columns silently | Independent review F1: a scratch test swapped energy and peak power with zero warnings | FAIL check `sessions.header_consistency` (D8) |
 | C12 | `to_numeric(errors="coerce")` turned 2,549 blank peak-power values into NaN; the count was stored but never checked or documented, and a blank energy value would have become a silent failed attempt | Review F2 (run manifest) | `sessions.numeric_parse`: missing energy FAIL, blank peak power WARN (D8) |
 | C13 | The whitespace strip keyed on `dtype == object`, which pandas 3 no longer uses for text, so it silently did nothing | Review F9 (no padded cells in this data, so no number moved) | Strip keyed on string dtypes; `pandas>=2.0,<4` pinned |
+| C14 | "43.5% of retry visits switch port" counted `UNBOUND@C → C` as a switch and included first-time successes, although every DC charger has one port id | Review F3 | Measured by charger over retry visits: 27.2% (D9) |
+| C15 | Inferred outages still open at the data end were silently ignored — two S29 chargers dark for ~25 days at the end of the reporting month | Review F5 | Listed for on-site verification (WARN), never counted as downtime (D9) |
+| C16 | The judgement call's "~4 pts" was quoted from exploration; no code produced it | Review F12 | Computed every run: 90.33% (+4.30) quarter · 88.92% (+5.05) 13 months (D9) |
+| C17 | "Repair effect: median FTCS" was a charger-level measure with no control group | Review F14 | Relabelled with caveat (D9) |

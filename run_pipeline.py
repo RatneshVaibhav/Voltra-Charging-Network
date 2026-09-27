@@ -113,26 +113,31 @@ def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
         attempts, visits = transform.build_visits(attempts, grouping_key=v["grouping_key"],
                                                   min_gap=v["min_gap_minutes"], max_gap=v["max_gap_minutes"])
         outages, charger_stats = inference.infer_outages(attempts, defs)
-        logger.info("TRANSFORM | visits=%s inferred outage windows=%s (excluded outside commissioned life=%s) "
-                    "silent chargers=%s", len(visits), len(outages),
-                    outages.attrs.get("excluded_outside_commissioned_life", 0), int(charger_stats["silent_charger"].sum()))
+        open_runs = inference.open_runs_at_data_end(attempts, defs)
+        logger.info("TRANSFORM | visits=%s inferred outage windows=%s silent chargers=%s open at data end=%s %s",
+                    len(visits), len(outages), int(charger_stats["silent_charger"].sum()), len(open_runs),
+                    open_runs[["site_id", "charger_id"]].values.tolist())
         # ---------------- VALIDATE 3: model
         brief = json.loads((SIM_DIR / "client_brief.json").read_text())
         snapshot_label = ev_r2.details.get("snapshot_taken_utc", "live")
         since = len(results)
         results += validate.check_model(attempts, visits, site_diag, len(dc_sessions), snapshot_label,
                                         sessions["session_start"].max(), brief,
-                                        r1_columns=list(sessions.columns), r1_session_ids=set(sessions["session_id"]))
+                                        r1_columns=list(sessions.columns), r1_session_ids=set(sessions["session_id"]),
+                                        open_runs=open_runs)
         # ---------------- METRICS
-        out = metrics_mod.compute_metrics(attempts, visits, sites, charger_stats, outages, status_events,
-                                          work_orders, defs, run_date)
+        out = metrics_mod.compute_metrics(attempts, visits, sites, charger_stats, outages, open_runs, status_events,
+                                          work_orders, defs, run_date,
+                                          blank_port_rows=int((sessions["port_id"] == "").sum()))
         m = out["metrics"]
         results.append(validate.check_dashboard(m["illustrative_simulated_input"]["reliability_definitions"]["operator_noc_uptime_pct"],
                                                 ev_s1.details["operator_dashboard"]["network_uptime_pct"], defs))
         validate.gate(results, "model gate", logger, since)
         m["validation_summary"] = pd.Series([r.status for r in results]).value_counts().to_dict()
         # ---------------- SAVE
-        charger_out = chargers.merge(charger_stats.drop(columns=["site_id"]), on="charger_id", how="left")
+        charger_out = chargers.merge(charger_stats.drop(columns=["site_id"]), on="charger_id", how="left",
+                                     validate="one_to_one")
+        charger_out["open_run_at_data_end"] = charger_out["charger_id"].isin(open_runs["charger_id"])
         attempt_cols = ["session_id", "visit_id", "attempt_no", "site_id", "charger_id", "port_key", "is_unbound",
                         "session_start", "session_end", "duration_min", "energy_kwh", "peak_power_kw", "is_success",
                         "gap_to_prev_min", "payment_method", "evse_name", "source_file"]
@@ -144,6 +149,7 @@ def run(run_date: pd.Timestamp, offline: bool, chaos: str) -> int:
             "validation_report.json": [r.as_dict() for r in results], "run_manifest.json": manifest,
             "site_scorecard.csv": out["scorecard"], "monthly_kpi.csv": out["monthly"], "sensitivity.csv": out["sensitivity"],
             "sites.csv": sites, "chargers.csv": charger_out, "outage_windows_inferred.csv": outages,
+            "open_outages_at_data_end.csv": open_runs,
             "visits.csv": visits, "attempts.csv": attempts[attempt_cols],
         }
         target = save.publish_partition(PROCESSED_DIR, rd, outputs, logger)

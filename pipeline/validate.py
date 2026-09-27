@@ -180,7 +180,7 @@ def check_sessions(s: pd.DataFrame, clean_stats: dict, defs: dict, run_date: pd.
 # ------------------------------------------------------------------ gate 3: model
 def check_model(attempts: pd.DataFrame, visits: pd.DataFrame, site_diag: dict, dc_session_rows: int,
                 registry_snapshot: str, data_end: pd.Timestamp, client_brief: dict,
-                r1_columns: list[str], r1_session_ids: set) -> list[CheckResult]:
+                r1_columns: list[str], r1_session_ids: set, open_runs: pd.DataFrame) -> list[CheckResult]:
     out = []
     out.append(_r("model.site_resolution", "cross-source", "FAIL" if site_diag["unresolved"] else "PASS",
                   f"chargers={site_diag['chargers']} by method={site_diag['by_method']} unresolved={site_diag['unresolved']}",
@@ -215,6 +215,12 @@ def check_model(attempts: pd.DataFrame, visits: pd.DataFrame, site_diag: dict, d
                   f"KPI inputs = {len(set(attempts.columns) & set(r1_columns))} R1 columns + "
                   f"{len(set(attempts.columns) & DERIVED_ATTEMPT_COLUMNS)} derived columns; all {len(attempts)} "
                   f"attempts are R1 session_ids", len(extra) + foreign))
+    listed = "; ".join(f"{r.site_id} charger {r.charger_id}: no session for {r.days_without_any_session_at_data_end} days "
+                       f"while its site-mates logged {r.trailing_site_successes} successes" for r in open_runs.itertuples())
+    out.append(_r("model.open_outages_at_data_end", "inference", "WARN" if len(open_runs) else "PASS",
+                  f"inferred outages still open when the data ends={len(open_runs)} ({listed}) — outage or "
+                  f"decommissioning, so never counted as downtime; listed for on-site verification" if len(open_runs)
+                  else "no inferred outage is open at the end of the data", len(open_runs)))
     owner = (client_brief.get("reporting_facts") or {}).get("kpi_owner")
     out.append(_r("organisational.kpi_owner", "organisational", "UNKNOWN" if not owner else "PASS",
                   "no documented owner of the reliability KPI; four stakeholders define 'reliable' differently "

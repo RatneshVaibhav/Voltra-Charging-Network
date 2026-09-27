@@ -42,6 +42,7 @@ so the console shows what was accepted and why. Gate tolerances live in `config/
 | Registry addresses identify sites | one spelling per site | `model.address_variants` | WARN | Cluster by coordinates (150 m) | WARN 43 → 40 |
 | Registry status describes 2024 | snapshot date ≈ data period | `model.registry_temporal_alignment` | WARN | Use registry for identity/location only | WARN |
 | Every DC charger has a site | 0 unresolved | `model.site_resolution` | FAIL | Stop | PASS (86 port id + 2 name) |
+| An outage we cannot close is still worth a look | no inferred outage run still open when the data ends | `model.open_outages_at_data_end` | WARN | List for on-site verification; never counted as downtime (could be a decommissioning) | WARN 2 — S29 chargers 13664401, 13164881, no session for ~25 days |
 | The operator's dashboard is computed from its own data | dashboard == recomputed NOC uptime | `S1.dashboard_reproducible` | WARN | Investigate the dashboard logic | PASS 99.77% = 99.77% |
 
 ## Integrity & organisational checks
@@ -60,3 +61,5 @@ so the console shows what was accepted and why. Gate tolerances live in `config/
 - Visits are reconstructed without driver identity; two drivers arriving within 5 minutes at a busy site can merge.
 - The failure rate is a **lower bound**: attempts that never created a session are invisible.
 - Outage windows are **inferred** statistically; single-charger sites (2 sites) cannot be inferred.
+- An inferred outage still open when the data ends is **listed for verification, not counted** — it cannot be told
+  apart from a decommissioning.

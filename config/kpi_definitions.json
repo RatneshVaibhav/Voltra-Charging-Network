@@ -1,7 +1,7 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "approved_on": "2026-09-27",
-  "approved_in": "docs/decisions_log.md (D1-D8)",
+  "approved_in": "docs/decisions_log.md (D1-D9)",
   "change_policy": "Business definitions. Never overridden by environment variables. Any change needs a dated entry in docs/decisions_log.md and a version bump.",
 
   "dc_charger": {
@@ -38,7 +38,9 @@
     "gap_definition": "session_start minus the session_end of the previous row in sort order at the same site",
     "min_gap_minutes": -2,
     "max_gap_minutes": 5,
-    "visit_success_rule": "any attempt in the visit is successful"
+    "visit_success_rule": "any attempt in the visit is successful",
+    "retry_visit": "first attempt failed and the visit has >= 2 attempts",
+    "retry_switch_rule": "a retry visit whose attempts span >= 2 charger_ids (each DC charger exposes one port id, so this equals a port switch; a port-less UNBOUND@charger attempt followed by the same charger is not a switch)"
   },
 
   "sensitivity": [
@@ -47,7 +49,8 @@
     {"name": "site window 2 min", "grouping_key": "site_id", "max_gap_minutes": 2},
     {"name": "site window 10 min", "grouping_key": "site_id", "max_gap_minutes": 10},
     {"name": "site window 15 min", "grouping_key": "site_id", "max_gap_minutes": 15},
-    {"name": "port window 2 min (rejected alternative)", "grouping_key": "port_key", "max_gap_minutes": 2}
+    {"name": "port window 2 min (rejected alternative)", "grouping_key": "port_key", "max_gap_minutes": 2},
+    {"name": "drop port-less attempts (rejected, D2)", "exclude_unbound": true, "grouping_key": "site_id", "max_gap_minutes": 5}
   ],
 
   "kpi": {
@@ -94,7 +97,8 @@
     "rule": "for a charger with share p (>= min_share) of the site's successful sessions, a run of k consecutive successful site sessions on other chargers is an inferred outage when (1-p)^k < probability_threshold",
     "min_share": 0.1,
     "probability_threshold": 0.001,
-    "bounded_by": "charger commissioned life (first to last session)",
+    "bounded_by": "a window is closed on both sides by the charger's own successes, so it lies inside its commissioned life",
+    "open_at_data_end": "a run still open when the data ends is listed for on-site verification and never counted as downtime (it cannot be told apart from decommissioning)",
     "silent_charger": {"min_inferred_availability": 0.99, "max_first_attempt_success": 0.80}
   },
 

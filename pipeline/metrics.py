@@ -21,19 +21,64 @@ def baseline_months(visits: pd.DataFrame, n: int) -> list[str]:
 
 
 def sensitivity_table(attempts: pd.DataFrame, defs: dict) -> pd.DataFrame:
+    """Every tested definition, on both grains the project reports: 13 months and the baseline quarter.
+    A variant with exclude_unbound=true drops the port-less attempts — the rejected D2 alternative, kept visible."""
     base_rule, v = defs["attempt"]["success_rule"], defs["visit"]
     rows = []
     variants = [{"name": "LOCKED DEFINITION", "grouping_key": v["grouping_key"], "max_gap_minutes": v["max_gap_minutes"]}]
     for variant in variants + defs["sensitivity"]:
-        a = attempts.copy()
+        a = (attempts[~attempts["is_unbound"]] if variant.get("exclude_unbound") else attempts).copy()
         a["ok"] = success_mask(a["energy_kwh"], variant.get("success_rule", base_rule))
         a2, vis = build_visits(a, grouping_key=variant["grouping_key"], min_gap=v["min_gap_minutes"],
                                max_gap=variant["max_gap_minutes"], success_col="ok")
         s = visit_summary(a2, vis, success_col="ok")
-        rows.append({"variant": variant["name"], "visits": s["visits"], "attempt_success_pct": pct(s["attempt_success_rate"]),
-                     "ftcs_pct": pct(s["ftcs"]), "troubled_pct": pct(s["troubled_success_rate"]),
+        q = vis[vis["month"].isin(baseline_months(vis, defs["kpi"]["baseline_months"]))]
+        rows.append({"variant": variant["name"],
+                     "changes": "population (port-less attempts removed)" if variant.get("exclude_unbound") else "definition",
+                     "visits": s["visits"], "attempt_success_pct": pct(s["attempt_success_rate"]),
+                     "ftcs_pct": pct(s["ftcs"]), "ftcs_baseline_pct": pct(q["first_attempt_success"].mean()),
+                     "troubled_pct": pct(s["troubled_success_rate"]),
                      "failed_visit_pct": pct(s["failed_visit_rate"]), "attempts_per_visit": round(s["attempts_per_visit"], 2)})
     return pd.DataFrame(rows)
+
+
+def retry_behaviour(visits: pd.DataFrame, attempts: pd.DataFrame) -> dict:
+    """How drivers retry. A retry visit = first attempt failed and the driver tried again (>= 2 attempts).
+    Switching is measured by charger: every DC charger here exposes one port id, and a port-less UNBOUND@charger
+    attempt followed by the same charger is the same place, not a switch."""
+    multi = visits[visits["attempts"] > 1]
+    retry = multi[~multi["first_attempt_success"]]
+    ports = attempts[~attempts["is_unbound"]].groupby("charger_id")["port_key"].nunique().value_counts()
+    return {"multi_attempt_visits_pct": pct(len(multi) / len(visits)),
+            "retry_visits_pct": pct(len(retry) / len(visits)),
+            "retry_visits_switching_charger_pct": pct((retry["chargers_tried"] > 1).mean()),
+            "multi_attempt_visits_split_by_port_grouping_pct": pct((multi["ports_tried"] > 1).mean()),
+            "identified_ports_per_dc_charger": {str(k): int(n) for k, n in ports.sort_index().items()},
+            "note": "the split-by-port-grouping share is why D3 rejects port-level visits (it would cut those visits "
+                    "in two); it is not the share of drivers who moved — that is retry_visits_switching_charger_pct"}
+
+
+def judgement_call(attempts: pd.DataFrame, visits: pd.DataFrame, base: list[str], blank_port_rows: int, defs: dict) -> dict:
+    """D2 made reproducible: what the port-less attempts are, and what the KPI would read if they were dropped."""
+    v, u = defs["visit"], attempts[attempts["is_unbound"]]
+    _, dropped = build_visits(attempts[~attempts["is_unbound"]], grouping_key=v["grouping_key"],
+                              min_gap=v["min_gap_minutes"], max_gap=v["max_gap_minutes"])
+    kept_q, dropped_q = visits[visits["month"].isin(base)], dropped[dropped["month"].isin(base)]
+    kept_b, drop_b = kept_q["first_attempt_success"].mean(), dropped_q["first_attempt_success"].mean()
+    kept_13, drop_13 = visits["first_attempt_success"].mean(), dropped["first_attempt_success"].mean()
+    stretch = defs["kpi"]["target"]["stretch_next_quarter"]
+    return {"decision": "D2 — keep port-less (unbound) attempts on DC chargers as failed attempts",
+            "port_less_attempts": int(len(u)), "blank_port_rows_in_export": int(blank_port_rows),
+            "all_blank_port_rows_on_dc_chargers": int(len(u)) == int(blank_port_rows),
+            "zero_energy_pct": pct((u["energy_kwh"] == 0).mean()),
+            "median_duration_min": round(float(u["duration_min"].median()), 1),
+            "share_of_failed_attempts_pct": pct(u["is_success"].eq(False).sum() / (~attempts["is_success"]).sum()),
+            "ftcs_baseline_kept_pct": pct(kept_b, 2), "ftcs_baseline_if_dropped_pct": pct(drop_b, 2),
+            "ftcs_13_month_kept_pct": pct(kept_13, 2), "ftcs_13_month_if_dropped_pct": pct(drop_13, 2),
+            "inflation_if_dropped_pts": {"baseline_quarter": round(100 * (drop_b - kept_b), 2),
+                                         "13_months": round(100 * (drop_13 - kept_13), 2)},
+            "dropping_would_appear_to_meet_stretch_target": bool(drop_b >= stretch),
+            "stretch_target_pct": 100 * stretch}
 
 
 def site_scorecard(visits: pd.DataFrame, sites: pd.DataFrame, base: list[str], defs: dict) -> tuple[pd.DataFrame, dict]:
@@ -107,12 +152,18 @@ def repair_effect(work_orders: pd.DataFrame, attempts: pd.DataFrame, defs: dict)
     r = pd.DataFrame(rows)
     if r.empty:
         return {"work_orders_evaluable": 0}
-    return {"work_orders_evaluable": int(len(r)), "corrective_work_orders": int((work_orders["work_type"] == "corrective").sum()),
-            "median_ftcs_before_pct": pct(r["before"].median()), "median_ftcs_after_pct": pct(r["after"].median()),
-            "share_improved_pct": pct((r["after"] > r["before"]).mean())}
+    return {"measure": "charger first-attempt success, before vs after a corrective work order",
+            "window_days": days, "work_orders_evaluable": int(len(r)),
+            "corrective_work_orders": int((work_orders["work_type"] == "corrective").sum()),
+            "median_first_attempt_success_before_pct": pct(r["before"].median()),
+            "median_first_attempt_success_after_pct": pct(r["after"].median()),
+            "share_improved_pct": pct((r["after"] > r["before"]).mean()),
+            "caveat": "illustrative: work orders are simulated; no control group, and the whole fleet improved over "
+                      "the same months, so this does not show that repairs caused the change"}
 
 
-def compute_metrics(attempts, visits, sites, charger_stats, outages, status_events, work_orders, defs, run_date) -> dict:
+def compute_metrics(attempts, visits, sites, charger_stats, outages, open_runs, status_events, work_orders, defs, run_date,
+                    blank_port_rows) -> dict:
     base = baseline_months(visits, defs["kpi"]["baseline_months"])
     q = visits[visits["month"].isin(base)]
     qa = attempts[attempts["visit_id"].isin(q["visit_id"])]
@@ -125,7 +176,6 @@ def compute_metrics(attempts, visits, sites, charger_stats, outages, status_even
                .reset_index())
     monthly[["ftcs", "failed_visit_rate"]] = (monthly[["ftcs", "failed_visit_rate"]] * 100).round(2)
     failed = attempts[~attempts["is_success"]]
-    multi = visits[visits["attempts"] > 1]
     card, lag = site_scorecard(visits, sites, base, defs)
     sens = sensitivity_table(attempts, defs)
     rel = reliability_definitions(status_events, charger_stats)
@@ -149,14 +199,16 @@ def compute_metrics(attempts, visits, sites, charger_stats, outages, status_even
                               for k, v in overall.items()},
         "baseline_quarter": {k: (pct(v) if k.endswith("rate") or k == "ftcs" else (round(v, 2) if isinstance(v, float) else v))
                              for k, v in baseline.items()},
-        "driver_behaviour": {"multi_attempt_visits_pct": pct(len(multi) / len(visits)),
-                             "multi_attempt_visits_switching_port_pct": pct((multi["ports_tried"] > 1).mean())},
+        "driver_behaviour": retry_behaviour(visits, attempts),
+        "judgement_call": judgement_call(attempts, visits, base, blank_port_rows, defs),
         "instrumentation": {"unbound_share_of_failed_attempts_pct": pct(failed["is_unbound"].mean()),
                             "session_error_populated_rows": int((attempts["session_error"] != "").sum())},
         "lagging_sites": lag,
         "inferred_outages": {"windows": int(len(outages)), "fleet_inferred_availability_pct": rel["inferred_availability_real_pct"],
                              "silent_chargers": int(len(silent)), "silent_charger_ids": silent["charger_id"].tolist(),
                              "corr_availability_vs_first_attempt_success": round(float(charger_stats[["inferred_availability", "first_attempt_success"]].corr().iloc[0, 1]), 2),
+                             "open_at_data_end": [{k: (str(x) if isinstance(x, pd.Timestamp) else x) for k, x in r.items()}
+                                                  for r in open_runs.to_dict("records")],
                              "basis": "inferred from real sessions"},
         "illustrative_simulated_input": {
             "reliability_definitions": rel,
@@ -171,7 +223,7 @@ def evidence_table(m: dict, sens: pd.DataFrame) -> str:
     k, b, o = m["kpi"], m["baseline_quarter"], m["overall_13_months"]
     rel = m["illustrative_simulated_input"]["reliability_definitions"]
     rep = m["illustrative_simulated_input"]["repair_effect"]
-    fv = sens["failed_visit_pct"]
+    fv = sens.loc[sens["changes"] == "definition", "failed_visit_pct"]   # definition ranges exclude the rejected D2 row
     rows = [
         ("1", "First-Time Charge Success (FTCS) — **project KPI**", "Outcome", f"{k['baseline_ftcs_pct']}%",
          f"{k['ftcs_13_month_pct']}%", "Visits whose first attempt delivered ≥1 kWh ÷ visits (site-level, 5-min window)",
@@ -182,17 +234,19 @@ def evidence_table(m: dict, sens: pd.DataFrame) -> str:
          f"Exact size — definition-sensitive ({fv.min()}–{fv.max()}% across tested definitions)"),
         ("3", "Troubled-success rate (driver retries)", "Driver interaction", f"{b['troubled_success_rate']}%",
          f"{o['troubled_success_rate']}%", "Visits that failed first but succeeded on a retry ÷ visits", "Real",
-         f"Retries are hidden KPI loss; {m['driver_behaviour']['multi_attempt_visits_switching_port_pct']}% of retry visits switch port",
+         f"Retries are hidden KPI loss; {m['driver_behaviour']['retry_visits_switching_charger_pct']}% of retry visits move to another charger",
          "Whether the retry fixed the charger or the driver changed something"),
         ("4", "Port-less share of failed attempts", "Instrumentation gap", f"{m['instrumentation']['unbound_share_of_failed_attempts_pct']}%",
          "—", "Failed attempts with no port recorded ÷ failed attempts", "Real",
          "Nearly a third of failures cannot be attributed to a port, so crews cannot be sent to them", "What stage the attempt died at (auth, handshake, payment)"),
         ("5", "Reliability-definition gap", "Operations / intervention",
          f"Operator uptime {rel['operator_noc_uptime_pct']}% · federal-style {rel['federal_style_uptime_pct']}% · inferred availability {rel['inferred_availability_real_pct']}% · FTCS {k['baseline_ftcs_pct']}%",
-         "—", "Same fleet measured four ways; repair effect after work orders: "
-         f"median FTCS {rep.get('median_ftcs_before_pct')}% → {rep.get('median_ftcs_after_pct')}% (n={rep.get('work_orders_evaluable')})",
+         "—", "Same fleet measured four ways; charger first-attempt success before → after corrective work orders: "
+         f"median {rep.get('median_first_attempt_success_before_pct')}% → {rep.get('median_first_attempt_success_after_pct')}% "
+         f"(n={rep.get('work_orders_evaluable')}, no control group)",
          "Illustrative (simulated input) for operator/federal uptime and repairs; availability inferred from real data",
-         "Shows why 'uptime' cannot be the reliability headline", "Real maintenance history — work orders are simulated"),
+         "Shows why 'uptime' cannot be the reliability headline",
+         "Real maintenance history (work orders are simulated), or that repairs caused the change (no control group)"),
     ]
     head = ("| # | Metric | Type | Baseline quarter | 13 months | Definition / grain | Basis | Link to KPI | Does NOT prove |\n"
             "|---|---|---|---|---|---|---|---|---|\n")

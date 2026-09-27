@@ -158,6 +158,7 @@ def build_visits(attempts: pd.DataFrame, *, grouping_key: str, min_gap: float, m
                    visit_start=("session_start", "first"), visit_end=("session_end", "max"),
                    attempts=(success_col, "size"), first_attempt_success=(success_col, "first"),
                    any_success=(success_col, "max"), ports_tried=("port_key", "nunique"),
+                   chargers_tried=("charger_id", "nunique"),
                    unbound_attempts=("is_unbound", "sum"), energy_kwh=("energy_kwh", "sum"))
               .reset_index())
     visits["outcome"] = np.select(

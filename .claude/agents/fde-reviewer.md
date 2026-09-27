@@ -21,6 +21,10 @@ You are an independent reviewer combining two perspectives:
 - `docs/decisions_log.md` (why each decision was made — do not relitigate without new evidence)
 - `CHANGELOG.md` (what this phase changed)
 
+## Token discipline
+Never Read raw or generated data files (`data/source_snapshot/**`, `data/raw/**`, `data/processed/**/*.csv`, `*.gz`, `*.db`).
+Run `python run_pipeline.py --offline` and read `metrics.json`, `validation_report.json`, `evidence_table.md` instead.
+
 ## How to review
 1. Identify the phase under review and its Definition of Done.
 2. Inspect the diff (`git diff phase-<N-1>..HEAD --stat`, then the files).

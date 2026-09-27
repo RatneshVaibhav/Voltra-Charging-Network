@@ -7,7 +7,7 @@ paths:
 
 - Simulate **only** S1 (charger status feed) and S2 (work orders). No simulated support tickets or sessions.
 - Anchor every simulated event to a real signal: S1 lifecycle events derive from real sessions; Faulted/Unavailable periods
-  come only from the 44 real inferred outage windows; S2 corrective orders map 1:1 to those windows (+ quarterly PM).
+  come only from the 46 real inferred outage windows; S2 corrective orders map 1:1 to those windows (+ quarterly PM).
 - Invented attributes are limited to: fault codes, counted-vs-excluded outage category, detection lag, trigger, repair
   action, resolution code. Each must be listed in `simulate/SIMULATION_SPEC.md` as **assumption**; everything else as
   **real anchor**.

@@ -15,6 +15,11 @@ logs/*
 !logs/.gitkeep
 *.log
 
+# Agent scratch space and personal agent config
+.scratch/
+CLAUDE.local.md
+.claude/settings.local.json
+
 # Python / Jupyter / editors
 __pycache__/
 *.py[cod]
@@ -25,8 +30,3 @@ venv/
 .idea/
 .vscode/
 .DS_Store
-
-# Agent scratch space and personal agent config
-.scratch/
-CLAUDE.local.md
-.claude/settings.local.json

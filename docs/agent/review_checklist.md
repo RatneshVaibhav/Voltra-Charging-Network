@@ -71,6 +71,12 @@ Verdict per review: **READY** (no BLOCKER/MAJOR) · **READY WITH FIXES** (MAJORs
 
 ## C. Definition of Done per phase
 
+**Phase 1 — Decisions & context layer** (documentation only — check internal consistency; do NOT rerun data work)
+- `docs/decisions_log.md` has every decision with options, evidence, rationale; corrections logged.
+- `config/kpi_definitions.json` agrees with `docs/decisions_log.md` and `CLAUDE.md` (thresholds, windows, site rules,
+  KPI formula, baseline, target, freshness, lagging-site rule).
+- No contradictions between `CLAUDE.md`, the decisions log, the config and `docs/agent/reference_numbers.md`.
+
 **Phase 2 — Source reasoning**
 - `docs/source_map.md`: business questions → info → fields → sources → owner → grain → freshness → trust → gaps.
 - Required-fields list (minimum per source) with justification.

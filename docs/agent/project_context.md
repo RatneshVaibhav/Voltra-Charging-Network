@@ -3,6 +3,8 @@
 > **Authority order if anything conflicts:** `docs/decisions_log.md` → `config/kpi_definitions.json` → `CLAUDE.md` → this file.
 > Regression numbers live in `docs/agent/reference_numbers.md`; review criteria in `docs/agent/review_checklist.md`;
 > EV-charging domain knowledge in `docs/agent/domain_primer.md`.
+> Section numbers are kept from the original Phase 1 file: §4 (locked decisions) and §11 (phase status) now live in
+> `CLAUDE.md`; §8 (reference numbers) lives in `docs/agent/reference_numbers.md`. Current numbers there win.
 
 
 ---
@@ -95,11 +97,11 @@ Graders explicitly do **not** grade project size or UI polish. They want explici
 The data underneath is **real public data** (see §6). We do **not** attribute results to any named real operator:
 the dataset does not identify itself as a specific network, so naming one would overclaim.
 
-**Headline:** *"Our fast chargers report 99% uptime — so why do 1 in 6 drivers fail on their first try?"*
+**Headline:** *"Our fast chargers report 99% uptime — so why do 1 in 7 drivers fail on their first try?"*
 
-**Business problem (SMART, approved):** First-time charge success across **88 DC fast chargers at 43 sites** was
-**83.8%** over 13 months (Jan 2024–Jan 2025) and **86.0%** in the most recent quarter (Nov 2024–Jan 2025).
-One in five attempts delivered no usable energy, yet **none of 46,575 sessions carried an error code**. **29.7%** of failed
+**Business problem (SMART, approved):** First-time charge success across **88 DC fast chargers at 40 sites** was
+**83.87%** over 13 months (Jan 2024–Jan 2025) and **86.03%** in the most recent quarter (Nov 2024–Jan 2025).
+One in five attempts delivered no usable energy, yet **none of 46,575 sessions carried an error code**. **29.6%** of failed
 attempts died before a port was even recorded. Failures are fleet-wide, not confined to a few chargers, so the cause
 cannot be found from today's data.
 
@@ -142,7 +144,7 @@ All definitions live in versioned config `config/kpi_definitions.json` and must 
 5. **Site resolution chain** (per charger): (a) any of the charger's `port_id`s matches an AFDC `ev_network_ids.posts`
    entry → site = normalised `street_address|city` of that AFDC record; (b) else fuzzy name match of `evse_name` vs AFDC
    `station_name` (difflib, cutoff 0.85) → that record's address; (c) else `UNRESOLVED|<charger_id>` (log + count).
-   Current result: 86 chargers via (a), 2 via (b), 0 via (c) → **43 sites**.
+   Current result: 86 chargers via (a), 2 via (b), 0 via (c) → 43 address strings → **40 sites** after 150 m clustering (D7).
    Note: AFDC lists *each charger as its own "station"*; the physical site is the **address cluster**, not the AFDC id.
    The text before "/" in `evse_name` is the **owning organisation**, *not* a site (e.g. `BRIGHTRIDGE EV / BR-JC LIBRARY`
    vs `BRIGHTRIDGE EV / BR-JONESBOROUGH`).
@@ -196,7 +198,7 @@ effect (intervention — *illustrative, uses simulated S1/S2*).
 **S1 — Charger status feed (mock REST API, `simulate/mock_status_api.py`, default `http://127.0.0.1:8001`)**
 - OCPP 1.6-style `StatusNotification` events per port. Derived from real sessions: success → Preparing → Charging →
   Finishing → Available; failed attempt → Preparing → Available with `errorCode = NoError` (mirrors the real blank
-  `session_error`); unbound attempts emit nothing; the **44 real inferred outage windows** → Faulted/Unavailable.
+  `session_error`); unbound attempts emit nothing; the **46 real inferred outage windows** → Faulted/Unavailable.
 - Invented attributes only: fault code, and the split of outage windows into counted vs excluded categories
   (maintenance / utility), which reproduces the operator's "99%" under the NOC definition.
 - API behaviour: paginated (`page`, `page_size`, `has_more`, `total_records`), `month=YYYY-MM` filter, one deterministic
@@ -210,11 +212,11 @@ effect (intervention — *illustrative, uses simulated S1/S2*).
 **Client brief** `data/simulated_client_systems/client_brief.json`: leadership claim ("99% uptime") and conflicting
 stakeholder definitions of uptime/reliability; no documented KPI owner (mirrors FlashEats' metric-definitions file).
 
-**Real-data outage inference (the anchor for S1/S2):** at multi-charger sites (35 sites, 80 chargers), a charger's
+**Real-data outage inference (the anchor for S1/S2):** at multi-charger sites (38 sites, 86 chargers), a charger's
 share *p* of the site's successful sessions is computed; a run of *k* consecutive successful site sessions on other
 chargers is flagged when (1−p)^k < 0.001 (p ≥ 0.1), bounded to the charger's commissioned life (first→last session).
-Result: 44 windows, fleet availability 97.05%, 14 "silent" chargers (≥99% available but first-attempt success < 80%),
-corr(availability, FTCS) = 0.59. Single-charger sites (8) cannot be inferred. This is **inferred, not observed**.
+Result: 46 windows, fleet availability 97.05%, 15 "silent" chargers (≥99% available but first-attempt success < 80%),
+corr(availability, FTCS) = 0.55. Single-charger sites (2) cannot be inferred. This is **inferred, not observed**.
 
 ---
 
@@ -231,13 +233,16 @@ corr(availability, FTCS) = 0.59. Single-charger sites (8) cannot be inferred. Th
 | 4 | `energy_kwh > 0` but `peak_power_kw = 0` (physically inconsistent) | 1,766 all / 1,671 DC | WARN; do not reclassify |
 | 5 | Sessions > 24 h | 89 all / 4 DC | WARN |
 | 6 | Overlapping sessions on the same port | 23 (DC) | WARN; visit logic tolerates −2 min |
-| 7 | `evse_name` prefix is organisation, not site | 39 orgs vs 43 sites | Site via registry address chain (§5) |
-| 8 | AFDC lists each charger as a separate "station" | 86 records → 43 addresses | Cluster by address |
+| 7 | `evse_name` prefix is organisation, not site | 39 orgs vs 40 sites | Site via registry resolution + 150 m clustering (§5, D7) |
+| 8 | AFDC lists each charger as a separate "station" | 86 records → 43 address strings → 40 sites | Cluster by coordinates (D7) |
 | 9 | No shared join key between R1 and R2 except `port_id ↔ posts` | 86/88 DC chargers via port, 2 via name | Report coverage %; gate |
 | 10 | Registry is a 2026 snapshot vs 2024 sessions | — | Temporal misalignment → limitation |
 | 11 | Network growth: 42 of 88 DC chargers commissioned during the window; 3 stopped reporting | — | Mix effect on trends; report per-charger life |
 | 12 | Near-zero energy is an *inferred* failure: cause could be charger, vehicle, driver, or payment | — | Attribution unknown → Known/Unknown section |
 | 13 | Failed attempts before session creation are invisible | — | Failure rate is a **lower bound** |
+| 14 | Every monthly export ends at 23:59 UTC on the second-to-last day | 13 of 397 days missing | WARN `sessions.day_coverage`; limitation; re-export request |
+| 15 | Blank `evse_name`; chargers renamed mid-period (incl. owner prefix) | 12 rows; 19 chargers | WARN; names never used as keys |
+| 16 | Export `site_id` / `station_id` always blank | 100% | Renamed `source_site_id` / `source_station_id`; sites resolved from the registry |
 
 ---
 

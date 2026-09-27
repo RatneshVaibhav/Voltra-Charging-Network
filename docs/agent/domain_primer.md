@@ -6,7 +6,7 @@ Items marked **[hypothesis]** are plausible explanations we have **not** verifie
 ## 1. Hardware hierarchy
 - **Site** (physical location) → **charger / EVSE** (one cabinet/dispenser) → **port** (serves one vehicle at a time)
   → **connector** (plug type: CCS, CHAdeMO, NACS). [fact]
-- In our data: 88 DC chargers, each with 1 identified DC port; 43 sites; many sites have 2–4 chargers.
+- In our data: 88 DC chargers, each with 1 identified DC port; 40 sites; many sites have 2–4 chargers.
 - Driver experience is measured per **visit** (site-level), reliability per **charger/port**.
 
 ## 2. How a DC fast-charging session works (and where it fails)
@@ -45,7 +45,7 @@ plug-in/handshake never completed. Treat as failed attempts; say "we cannot dete
 |---|---|---|---|
 | **Operator uptime** | VP Ops / NOC dashboard | Time online and not `Faulted`, excluding maintenance & utility outages | "99%" (client claim; reproduced by simulated S1) |
 | **Federal (NEVI, 23 CFR 680.116)** | Grants & Compliance | Up only if online **and dispensing electricity**; >97% annual; excludes vehicle-caused failures, utility outages, scheduled maintenance, vandalism, disasters | ~97% (real-data outage inference: 97.05%) |
-| **Driver experience (FTCS)** | Customer Experience | Visits where the first attempt delivered ≥1 kWh | **83.8%** (13 mo) / **86.0%** (last quarter) — real data |
+| **Driver experience (FTCS)** | Customer Experience | Visits where the first attempt delivered ≥1 kWh | **83.87%** (13 mo) / **86.03%** (last quarter) — real data |
 
 The **gap between these numbers is the finding**. No KPI owner is documented → organisational validation issue (Class 6).
 
@@ -58,7 +58,7 @@ The **gap between these numbers is the finding**. No KPI owner is documented →
 - J.D. Power 2026: 12% of public charging visits end without charging (record low; 14% in 2025, 19% in 2024). [fact]
 - Paren Q2 2026: national DCFC reliability index 93.8%; most states 90–95%; laggards ~78%. [fact]
 - UC Davis (California corridor DCFCs, 2019–22): 83% and 77% generally successful visits on two networks; station range
-  13–95%; 8–9% troubled success. [fact] — our 10.3% troubled success is in the same ballpark.
+  13–95%; 8–9% troubled success. [fact] — our 10.4% troubled success is in the same ballpark.
 - Bay Area field study: 72.5% of connectors functional vs 95–98% operator-reported uptime. [fact]
 
 ## 7. Things that look like bugs but are correct here

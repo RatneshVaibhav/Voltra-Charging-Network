@@ -1,6 +1,6 @@
 ---
 name: review-phase
-description: Full independent review of one delivered phase against the rubric, its Definition of Done, reference numbers and red flags. Writes reviews/phase-N-review.md.
+description: Independent review of one phase (1-7) against the rubric, its Definition of Done, reference numbers and red flags. Writes reviews/phase-N-review.md.
 argument-hint: "[phase-number]"
 disable-model-invocation: true
 allowed-tools:
@@ -10,21 +10,25 @@ allowed-tools:
   - Bash(git status *)
   - Bash(git log *)
   - Bash(git diff *)
-  - Bash(git tag *)
+  - Bash(python run_pipeline.py *)
+  - Bash(pytest *)
 ---
 
 # Review phase $0
 
-1. **Orient.** Read `CHANGELOG.md` (entry for phase $0), `CLAUDE.md`, and the phase $0 Definition of Done in
-   `docs/agent/review_checklist.md` §C. Run `git status` and `git log --oneline --decorate -n 8`.
-   If the working tree has uncommitted changes other than `reviews/`, say so first — the review must be of a known state.
-2. **Scope the diff.** `git diff phase-<previous>..HEAD --stat` (if the previous tag is missing, diff against the first commit).
-3. **Delegate the deep review** to the `fde-reviewer` subagent with this brief:
-   "Review phase $0 of the Voltra project. Follow your full procedure: read the context files, run what can be run,
-   reproduce reference numbers, check the phase $0 Definition of Done, grep red flags, judge all five rubric pillars,
-   and return the report in the review_checklist §F template."
-4. **Sanity-check the subagent's report**: every finding has severity + location + evidence + fix; no finding asks to
-   change a locked decision (those go under "Questions for the design session").
-5. **Write** the report to `reviews/phase-$0-review.md` (create the folder if needed). Do not modify any other file.
-6. **Tell Lakshya** the verdict in 3–5 lines, the BLOCKER/MAJOR count, and: "Upload or paste
-   `reviews/phase-$0-review.md` into the design session so fixes land in the next snapshot."
+Follow `.claude/rules/agent-efficiency.md` throughout: never Read raw/generated data files; run scripts and read
+their summaries.
+
+1. Read `CLAUDE.md`, the phase $0 Definition of Done in `docs/agent/review_checklist.md` §C, and the matching
+   deliverable (Phase 2 `docs/source_map.md`, 3 `pipeline/extract.py` + `simulate/`, 4 `docs/validation_contract.md`
+   + `pipeline/validate.py`, 5 `docs/data_model.md` + `pipeline/transform.py`/`metrics.py`, 6 `run_pipeline.py` +
+   `docs/gate2_data_readiness.md` + `tests/`, 7 `docs/evidence.md` + `README.md` + `docs/demo_script.md`).
+2. **Phase 1 is documentation only:** check internal consistency; do not run the pipeline.
+   **Phases 3–7:** run `python run_pipeline.py --offline` once and `pytest -q`; read only `metrics.json`,
+   `validation_report.json` and `evidence_table.md` from `data/processed/run_date=2025-02-01/`; compare with
+   `docs/agent/reference_numbers.md` (counts exact, rates ±0.1 pp).
+3. Grep the phase's code for the red flags in `docs/agent/review_checklist.md` §D.
+4. Judge each rubric pillar (strong / adequate / at risk) with the single most important reason.
+5. Write `reviews/phase-$0-review.md` using the template in §F. Every finding: severity, file:line, evidence, fix.
+   Findings that would change a locked decision go under "Questions for the design session".
+6. Tell Lakshya the verdict and the BLOCKER/MAJOR count in 3–5 lines.

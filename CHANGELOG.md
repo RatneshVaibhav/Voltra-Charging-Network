@@ -1,6 +1,23 @@
 # CHANGELOG
 
-Each entry lists what a phase snapshot changed, how to run it, and anything to delete manually.
+## Final build — Phases 2–7 + review corrections (2026-09-27)
+**Added**
+- Pipeline: `run_pipeline.py`; `pipeline/{config,logging_utils,extract,clean,validate,transform,inference,metrics,save}.py`
+- Simulation: `simulate/build_client_systems.py`, `simulate/mock_status_api.py`, `simulate/SIMULATION_SPEC.md`;
+  generated `data/simulated_client_systems/{status_events.json.gz, sim_cmms.db, simulation_manifest.json}`
+- Real source snapshot: `data/source_snapshot/` (13 session CSVs + HF checksums, trimmed AFDC registry)
+- Docs: `source_map.md` (Phase 2), `validation_contract.md` (4), `data_model.md` (5), `gate2_data_readiness.md` (6),
+  `evidence.md` + `demo_script.md` (7)
+- Tests: `tests/` (9 tests) + `pytest.ini`; `scripts/refresh_source_snapshot.py`; `AGENTS.md`;
+  `.claude/rules/agent-efficiency.md`
+**Changed**
+- `config/kpi_definitions.json` → v1.1.0 (operators, tie-break, gap semantics, sensitivity list, 150 m site clustering,
+  lagging-site rule, freshness, completeness, outage inference)
+- `docs/decisions_log.md`: D1 amended (headline "1 in 7"), D3 amended (2-min label, gap spec), new D6 (run date &
+  freshness), D7 (distance-based sites); corrections C7–C10
+- `CLAUDE.md`, `README.md`, `WORKFLOW.md`, `docs/agent/*`, `.claude/skills/review-phase`, `verify-numbers`,
+  `.claude/agents/fde-reviewer.md` updated to the final state and token-efficient reviews
+**How to run:** `python run_pipeline.py --offline` · `pytest -q`
 
 ---
 

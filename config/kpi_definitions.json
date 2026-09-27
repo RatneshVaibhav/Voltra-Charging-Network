@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "approved_on": "2026-09-27",
+  "approved_in": "docs/decisions_log.md (D2, D3)",
+  "change_policy": "Business definitions. Do not override via environment variables. Changing any value requires a new dated entry in docs/decisions_log.md and a version bump.",
+  "dc_charger": {
+    "rule": "charger_id has >=1 identified port whose max peak_power_kw across the data exceeds the threshold",
+    "peak_power_threshold_kw": 20
+  },
+  "attempt": {
+    "failed_if_energy_kwh_below": 1.0,
+    "sensitivity_thresholds_kwh": [0.0001, 0.1],
+    "unbound_attempts": {
+      "definition": "blank port_id on a DC charger",
+      "treatment": "keep_as_attempt_attributed_to_charger_site",
+      "port_key_template": "UNBOUND@{charger_id}"
+    }
+  },
+  "site_resolution": {
+    "chain": ["port_id_to_afdc_posts", "evse_name_fuzzy_match_to_afdc_station_name", "unresolved"],
+    "site_key": "normalised upper(street_address) + '|' + upper(city) of the matched AFDC record",
+    "fuzzy_match_cutoff": 0.85
+  },
+  "visit": {
+    "grouping_key": "site",
+    "max_gap_minutes": 5,
+    "min_gap_minutes": -2,
+    "gap_definition": "session_start - previous session_end at the same site",
+    "sensitivity_max_gap_minutes": [2, 10],
+    "visit_success_rule": "any_attempt_successful"
+  },
+  "kpi": {
+    "name": "First-Time Charge Success rate (FTCS)",
+    "formula": "visits whose first attempt succeeded / all visits",
+    "grain": "visit",
+    "baseline_rule": "most recent 3 complete months",
+    "target": {"from": 0.860, "to": 0.87, "horizon_weeks": 6, "stretch_next_quarter": 0.90}
+  }
+}

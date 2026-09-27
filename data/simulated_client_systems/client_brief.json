@@ -1,0 +1,19 @@
+{
+  "data_origin": "simulated",
+  "note_on_origin": "Client persona artefact (fictional Voltra Charging Network). Mirrors the FlashEats client_metric_definitions.json pattern. Not derived from any real operator statement.",
+  "client": "Voltra Charging Network (fictional persona)",
+  "metric_under_review": "Network reliability",
+  "leadership_claim": "Our DC fast-charging network runs at 99% uptime.",
+  "leadership_request": "Customer complaints say chargers don't work. Our dashboard says they do. Tell us which is true and where to send crews.",
+  "stakeholders": {
+    "VP Operations / NOC": "A port is up when it is connected and not reporting Faulted. Scheduled maintenance and utility power interruptions are excluded because they are outside our control. This is the 99% on our dashboard.",
+    "Grants & Compliance": "We report to funders under federal NEVI-style rules: a port is up only if it is online AND successfully dispenses electricity at the required power. Annual uptime must exceed 97%. Failures caused by the vehicle, utility outages, scheduled maintenance, vandalism and natural disasters are excluded.",
+    "Customer Experience": "A charger is working only if the driver's first try works. Drivers who have to retry or leave without charge are our complaints.",
+    "Field-service vendor": "Reliability means work orders closed within SLA. If no alarm fires, there is nothing to dispatch."
+  },
+  "reporting_facts": {
+    "session_error_field": "Exported in every session file; the CPMS vendor says it is populated 'when the charger reports an error'.",
+    "kpi_owner": null
+  },
+  "note": "No canonical owner of the reliability KPI is formally documented."
+}
